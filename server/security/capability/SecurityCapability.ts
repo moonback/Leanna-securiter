@@ -30,6 +30,7 @@ import type { FindingFilterOptions } from '../orchestrator/FindingManager.js';
 import { SecurityPolicyEngine, type PolicyDecision } from '../policy/SecurityPolicyEngine.js';
 import { ThreatModelEngine, type ThreatModel } from '../threat/ThreatModelEngine.js';
 import { SecurityGraph } from '../graph/SecurityGraph.js';
+import { SecurityPostureTracker, type PostureSnapshot, type PostureTrendReport } from '../posture/SecurityPostureTracker.js';
 
 // ---------------------------------------------------------------------------
 // Modes d'audit exposés à Leanna (section 14 du plan)
@@ -81,6 +82,10 @@ export interface SecurityCapability {
    * sécurité unifié et interrogeable (section 17 du plan).
    */
   generateSecurityGraph(filters?: FindingFilterOptions): SecurityGraph;
+  /** Historique des instantanés de posture enregistrés après chaque audit. */
+  getPostureHistory(): PostureSnapshot[];
+  /** Tendance de posture (improving/stable/regressing) entre les deux derniers audits. */
+  getPostureTrend(): PostureTrendReport;
 }
 
 // ---------------------------------------------------------------------------
@@ -102,12 +107,14 @@ export class SecurityCapabilityGateway implements SecurityCapability {
   private readonly orchestrator: SecurityOrchestrator;
   private readonly policy: SecurityPolicyEngine;
   private readonly threatEngine: ThreatModelEngine;
+  private readonly posture: SecurityPostureTracker;
 
   constructor(
     private readonly workspaceRoot: string,
     orchestrator?: SecurityOrchestrator,
     policy?: SecurityPolicyEngine,
     threatEngine?: ThreatModelEngine,
+    posture?: SecurityPostureTracker,
   ) {
     if (!workspaceRoot || !workspaceRoot.trim()) {
       throw new SecurityCapabilityDeniedError('aucun workspace actif.');
@@ -115,6 +122,7 @@ export class SecurityCapabilityGateway implements SecurityCapability {
     this.orchestrator = orchestrator ?? SecurityOrchestrator.getInstance();
     this.policy = policy ?? new SecurityPolicyEngine(workspaceRoot);
     this.threatEngine = threatEngine ?? new ThreatModelEngine(workspaceRoot);
+    this.posture = posture ?? new SecurityPostureTracker();
   }
 
   // --- Politique d'accès (déléguée au SecurityPolicyEngine) ----------------
@@ -137,7 +145,7 @@ export class SecurityCapabilityGateway implements SecurityCapability {
     const targetDir = this.resolveInsideWorkspace(options.targetPath);
     const profile = MODE_TO_PROFILE[options.mode ?? 'standard'];
 
-    return this.orchestrator.runScan(targetDir, {
+    const result = await this.orchestrator.runScan(targetDir, {
       profile,
       triggerType: 'api',
       changedFiles: options.changedFiles,
@@ -146,6 +154,10 @@ export class SecurityCapabilityGateway implements SecurityCapability {
         ? { scanners: { sast: true, sca: false, secrets: true, iac: true, dast: false } }
         : undefined,
     });
+
+    // Enregistre la posture pour le suivi temporel (section 18).
+    this.posture.recordFromScan(result);
+    return result;
   }
 
   async scanFile(filePath: string): Promise<Finding[]> {
@@ -203,6 +215,14 @@ export class SecurityCapabilityGateway implements SecurityCapability {
     const attackSurface = this.orchestrator.getAttackSurface();
     const threatModel = this.threatEngine.build(findings);
     return SecurityGraph.build({ findings, attackSurface, threatModel });
+  }
+
+  getPostureHistory(): PostureSnapshot[] {
+    return this.posture.list();
+  }
+
+  getPostureTrend(): PostureTrendReport {
+    return this.posture.trend();
   }
 }
 
