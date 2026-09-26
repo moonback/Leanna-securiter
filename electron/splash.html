@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Leanna — Démarrage</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Manrope:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="splash.css" />
+</head>
+<body>
+
+  <!-- Ambient glowing spheres -->
+  <div class="ambient-glow glow-top-left"></div>
+  <div class="ambient-glow glow-bottom-right"></div>
+  <div class="ambient-glow glow-center"></div>
+
+  <!-- Animated cyber constellation & grid canvas -->
+  <canvas id="bg-canvas"></canvas>
+
+  <div class="splash-card">
+
+    <!-- ── Header ── -->
+    <div class="header">
+      <div class="header-left">
+        <div class="logo-container">
+          <img id="appLogo" src="../assets/images/icon-sombre.png" alt="Logo Leanna" class="app-logo-img" />
+        </div>
+        <div class="title-group">
+          <div class="title-row">
+            <h1 class="app-name">Leanna</h1>
+            <span class="badge-version">v1.2.0</span>
+          </div>
+          <p class="app-tagline">Environnement de développement propulsé par des agents IA</p>
+        </div>
+      </div>
+
+      <div class="header-right">
+        <div class="sys-stat">
+          <span class="sys-stat-label">Architecture</span>
+          <span class="sys-stat-value" id="statEnv">Electron • Core</span>
+        </div>
+        <div class="sys-stat">
+          <span class="sys-stat-label">Moteur</span>
+          <span class="sys-stat-value">AST & Fleet</span>
+        </div>
+        <div class="sys-stat">
+          <span class="sys-stat-label">Système</span>
+          <span class="sys-stat-value" id="statTime">--:--:--</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Hero ── -->
+    <div class="hero">
+      <div class="hero-logo-wrap">
+        <div class="hero-glow-back"></div>
+        <div class="hero-logo-rings">
+          <div class="ring"></div>
+          <div class="ring"></div>
+          <div class="ring"></div>
+        </div>
+        <div class="hero-logo-box">
+          <video id="heroLogo" class="hero-logo-img" src="../assets/video.mp4"
+                 autoplay loop muted playsinline></video>
+        </div>
+      </div>
+
+      <div class="hero-text">
+        <div class="hero-badge-pill">
+          <span class="hero-badge-dot"></span>
+          <span>ORCHESTRATEUR D'AGENTS IA</span>
+        </div>
+        <h2 class="hero-title">Leanna OS<span class="cursor-blink">_</span></h2>
+        <p class="hero-sub">
+          Analyse de code continue, génération et refactoring prédictif. Une flotte d'agents autonomes à haute réactivité intégrée à votre IDE.
+        </p>
+      </div>
+    </div>
+
+    <!-- ── Progress ── -->
+    <div class="progress-section">
+      <div class="status-row">
+        <div class="status-text">
+          <div class="status-dot"></div>
+          <span id="statusLabel">Initialisation de l'environnement sécurisé...</span>
+        </div>
+        <span class="percent-text" id="percentLabel">0%</span>
+      </div>
+      <div class="progress-track">
+        <div class="progress-bar" id="progressBar"></div>
+      </div>
+    </div>
+
+    <!-- ── Footer ── -->
+    <div class="footer-tags">
+      <div class="tag-list">
+        <div class="tag-item active" id="tagKernel">
+          <span class="indicator"></span>
+          <span>Core Engine</span>
+        </div>
+        <div class="tag-item" id="tagServer">
+          <span class="indicator"></span>
+          <span>Backend :4000</span>
+        </div>
+        <div class="tag-item" id="tagAST">
+          <span class="indicator"></span>
+          <span>Tree-sitter WASM</span>
+        </div>
+        <div class="tag-item" id="tagAgents">
+          <span class="indicator"></span>
+          <span>Agent Fleet</span>
+        </div>
+        <div class="tag-item" id="tagAgents">
+          <span class="indicator"></span>
+          <span>Telegram</span>
+        </div>
+      </div>
+      <div class="footer-right">
+        <span class="build-info" id="buildDate"></span>
+        <span class="security-badge">Exécution locale souveraine</span>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // ── Refs ──────────────────────────────────────────────
+    const appLogo      = document.getElementById('appLogo');
+    const heroLogo     = document.getElementById('heroLogo');
+    const progressBar  = document.getElementById('progressBar');
+    const percentLabel = document.getElementById('percentLabel');
+    const statusLabel  = document.getElementById('statusLabel');
+    const tagKernel    = document.getElementById('tagKernel');
+    const tagServer    = document.getElementById('tagServer');
+    const tagAST       = document.getElementById('tagAST');
+    const tagAgents    = document.getElementById('tagAgents');
+    const statTime     = document.getElementById('statTime');
+    const buildDate    = document.getElementById('buildDate');
+
+    // ── Clock ─────────────────────────────────────────────
+    function updateClock() {
+      if (statTime) {
+        statTime.textContent = new Date().toLocaleTimeString('fr-FR', {
+          hour: '2-digit', minute: '2-digit', second: '2-digit'
+        });
+      }
+    }
+    updateClock();
+    setInterval(updateClock, 1000);
+
+    // ── Build date ────────────────────────────────────────
+    if (buildDate) {
+      buildDate.textContent = 'BUILD ' + new Date().toLocaleDateString('fr-FR', {
+        day: '2-digit', month: '2-digit', year: 'numeric'
+      });
+    }
+
+    // ── Animated Cyber Canvas Background ───────────────────
+    const canvas = document.getElementById('bg-canvas');
+    const ctx    = canvas.getContext('2d');
+    let W, H, nodes = [];
+    const NODE_COUNT = 48;
+    const MAX_DIST = 140;
+
+    function resizeCanvas() {
+      W = canvas.width  = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+      nodes = [];
+      for (let i = 0; i < NODE_COUNT; i++) {
+        nodes.push({
+          x: Math.random() * W,
+          y: Math.random() * H,
+          vx: (Math.random() - 0.5) * 0.45,
+          vy: (Math.random() - 0.5) * 0.45,
+          radius: Math.random() * 1.8 + 1,
+          isOrange: Math.random() > 0.85
+        });
+      }
+    }
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
+    // Grid properties
+    const GRID_SIZE = 64;
+
+    function renderCanvas() {
+      ctx.clearRect(0, 0, W, H);
+
+      // Subtle cyber grid lines
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(0, 194, 255, 0.035)';
+      for (let x = 0; x < W; x += GRID_SIZE) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, H);
+        ctx.stroke();
+      }
+      for (let y = 0; y < H; y += GRID_SIZE) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(W, y);
+        ctx.stroke();
+      }
+
+      // Inter-node connection lines
+      for (let i = 0; i < nodes.length; i++) {
+        const a = nodes[i];
+        for (let j = i + 1; j < nodes.length; j++) {
+          const b = nodes[j];
+          const dx = a.x - b.x;
+          const dy = a.y - b.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < MAX_DIST) {
+            const alpha = (1 - dist / MAX_DIST) * 0.18;
+            ctx.strokeStyle = a.isOrange || b.isOrange
+              ? `rgba(255, 140, 0, ${alpha * 0.9})`
+              : `rgba(0, 194, 255, ${alpha})`;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(a.x, a.y);
+            ctx.lineTo(b.x, b.y);
+            ctx.stroke();
+          }
+        }
+      }
+
+      // Draw nodes
+      for (const n of nodes) {
+        n.x += n.vx;
+        n.y += n.vy;
+
+        if (n.x < 0) n.x = W;
+        if (n.x > W) n.x = 0;
+        if (n.y < 0) n.y = H;
+        if (n.y > H) n.y = 0;
+
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, n.radius, 0, Math.PI * 2);
+        if (n.isOrange) {
+          ctx.fillStyle = 'rgba(255, 140, 0, 0.65)';
+          ctx.shadowColor = '#ff8c00';
+        } else {
+          ctx.fillStyle = 'rgba(0, 194, 255, 0.7)';
+          ctx.shadowColor = '#00c2ff';
+        }
+        ctx.shadowBlur = 6;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      }
+
+      requestAnimationFrame(renderCanvas);
+    }
+    renderCanvas();
+
+    // ── Progress Logic ────────────────────────────────────
+    const STEPS = [
+      { pct: 15,  label: "Initialisation de l'environnement sécurisé...",       tag: tagKernel },
+      { pct: 35,  label: "Démarrage du serveur local (port 4000)...",             tag: tagServer },
+      { pct: 58,  label: "Vérification des connexions & Knowledge System...",     tag: tagServer },
+      { pct: 78,  label: "Chargement du moteur AST Tree-sitter & Call-Graph...",  tag: tagAST    },
+      { pct: 92,  label: "Initialisation de la flotte d'agents autonomes...",     tag: tagAgents },
+      { pct: 98,  label: "Initialisation des skills...",     tag: tagAgents },
+      { pct: 100, label: "Système opérationnel • Lancement de l'IDE...",          tag: tagAgents },
+    ];
+
+    let currentPct = 0, targetPct = 12, stepIndex = 0, serverHealthy = false;
+
+    function updateProgressUI(pct, text) {
+      currentPct = Math.min(100, Math.max(currentPct, pct));
+      if (progressBar) progressBar.style.width = currentPct + '%';
+      if (percentLabel) percentLabel.textContent = Math.round(currentPct) + '%';
+      if (text && statusLabel) statusLabel.textContent = text;
+    }
+
+    async function checkServerHealth() {
+      try {
+        const res = await fetch('http://127.0.0.1:4000/api/health');
+        if (res.ok) {
+          const json = await res.json();
+          if (json.status === 'ok' || json.status === 'success') {
+            serverHealthy = true;
+            if (tagServer) tagServer.classList.add('active');
+          }
+        }
+      } catch { /* en cours de démarrage */ }
+    }
+
+    const progressTimer = setInterval(() => {
+      if (currentPct < targetPct) {
+        currentPct += 1.4;
+        updateProgressUI(currentPct);
+      }
+      if (stepIndex < STEPS.length) {
+        const step = STEPS[stepIndex];
+        targetPct = step.pct;
+        if (statusLabel) statusLabel.textContent = step.label;
+        if (step.tag) step.tag.classList.add('active');
+        if (serverHealthy && currentPct >= 60 && stepIndex < STEPS.length - 1) stepIndex++;
+      }
+    }, 45);
+
+    const stepInterval = setInterval(() => {
+      checkServerHealth();
+      if (stepIndex < STEPS.length - 1) stepIndex++;
+      else clearInterval(stepInterval);
+    }, 750);
+
+    window.setLoadingProgress = function(pct, text) {
+      targetPct = pct;
+      updateProgressUI(pct, text);
+    };
+
+    window.markComplete = function() {
+      clearInterval(progressTimer);
+      clearInterval(stepInterval);
+      updateProgressUI(100, "Système opérationnel • Lancement de l'IDE...");
+      document.querySelectorAll('.tag-item').forEach(el => el.classList.add('active'));
+    };
+  </script>
+</body>
+</html>

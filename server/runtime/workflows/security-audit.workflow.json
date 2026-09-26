@@ -1,0 +1,51 @@
+{
+  "id": "security-audit",
+  "name": "Audit de sécurité complet",
+  "description": "Audit → correction → tests de sécurité → validation finale",
+  "steps": [
+    {
+      "id": "audit",
+      "action": "agent_submit",
+      "args": {
+        "agentId": "security",
+        "title": "Audit de sécurité",
+        "description": "{{input.description}}"
+      },
+      "label": "Audit de sécurité complet"
+    },
+    {
+      "id": "fix",
+      "action": "agent_submit",
+      "args": {
+        "agentId": "refactor",
+        "title": "Corrections de sécurité",
+        "description": "Implémenter les corrections: {{steps.audit.result}}"
+      },
+      "label": "Corrections",
+      "dependsOn": ["audit"],
+      "onError": "skip"
+    },
+    {
+      "id": "test",
+      "action": "agent_submit",
+      "args": {
+        "agentId": "test",
+        "title": "Tests de sécurité",
+        "description": "Valider les corrections avec des tests"
+      },
+      "label": "Tests de sécurité",
+      "dependsOn": ["fix"]
+    },
+    {
+      "id": "validate",
+      "action": "agent_submit",
+      "args": {
+        "agentId": "security",
+        "title": "Validation finale",
+        "description": "Re-vérifier après corrections"
+      },
+      "label": "Validation finale",
+      "dependsOn": ["test"]
+    }
+  ]
+}

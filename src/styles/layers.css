@@ -1,0 +1,164 @@
+/**
+ * layers.css — Fondations de mise en couche
+ *
+ * Règles :
+ *  1. Ne jamais utiliser de valeur z-index littérale en dehors de ce fichier.
+ *     Toujours utiliser un token --z-<couche> ci-dessous.
+ *  2. Les largeurs de modale sont canoniques : une seule source de vérité.
+ *  3. Les durées de mouvement respectent prefers-reduced-motion.
+ *  4. Le voile partagé utilise la variable --overlay-veil.
+ *  5. L'anneau de focus est défini ici et remplace tout outline custom.
+ *
+ * @import dans src/index.css, APRÈS le bloc @theme {}.
+ */
+
+/* ═══════════════════════════════════════════════
+   Z-INDEX SCALE — 12 paliers nommés
+   Tout z-index dans l'application doit référencer
+   l'un de ces tokens via var(--z-<couche>).
+═══════════════════════════════════════════════ */
+:root {
+  /* Couches en-dessous du flux normal */
+  --z-below:       -1;
+
+  /* Flux normal */
+  --z-base:         0;
+
+  /* Éléments ancrés (sticky headers, status bar) */
+  --z-sticky:      10;
+
+  /* Sidebar et rails de navigation */
+  --z-sidebar:     20;
+
+  /* Éléments flottants (FAB, orb) */
+  --z-float:       30;
+
+  /* Dropdowns et menus contextuels */
+  --z-dropdown:    40;
+
+  /* Sidepanels en mode overlay */
+  --z-sidepanel:   50;
+
+  /* Tooltips et popovers (doivent passer au-dessus des sidepanels) */
+  --z-tooltip:     60;
+
+  /* Toasts (notifications éphémères) */
+  --z-toast:       70;
+
+  /* Voile de modale (overlay sombre) */
+  --z-veil:        80;
+
+  /* Modales et dialogues */
+  --z-modal:       90;
+
+  /* Composants critiques (ex. CriticalEditConfirm) */
+  --z-critical:   100;
+
+  /* Splash screen et chargement initial */
+  --z-splash:     200;
+
+  /* Terminal flottant — doit passer au-dessus des modales et panels */
+  --z-terminal:   150;
+
+  /* Orb draggable — toujours au-dessus de tout le reste */
+  --z-orb:        9999;
+  --z-orb-constraint: 9998;
+}
+
+/* ═══════════════════════════════════════════════
+   LARGEURS CANONIQUES DES MODALES
+   6 tailles. Utiliser la prop `size` sur <Modal>.
+═══════════════════════════════════════════════ */
+:root {
+  --modal-w-xs:  320px;   /* Alertes, confirmations courtes */
+  --modal-w-sm:  480px;   /* Dialogues standards */
+  --modal-w-md:  600px;   /* Formulaires, détails */
+  --modal-w-lg:  768px;   /* Éditeurs, explorateurs */
+  --modal-w-xl:  960px;   /* Tableaux de bord, comparaisons */
+  --modal-w-2xl: 1140px;  /* Pleine largeur (StartupProjectModal) */
+
+  /* Hauteur max du corps défilable */
+  --modal-body-max-h: calc(100dvh - 180px);
+}
+
+/* ═══════════════════════════════════════════════
+   DURÉES DE MOUVEMENT
+   Trois vitesses + respect de la préférence système.
+═══════════════════════════════════════════════ */
+:root {
+  --motion-fast:    120ms;
+  --motion-normal:  200ms;
+  --motion-slow:    320ms;
+  --motion-easing:  cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-fast:   0ms;
+    --motion-normal: 0ms;
+    --motion-slow:   0ms;
+  }
+}
+
+/* ═══════════════════════════════════════════════
+   VOILE PARTAGÉ (overlay backdrop)
+   Variable unique pour le fond semi-transparent
+   des modales et sidepanels en mode overlay.
+═══════════════════════════════════════════════ */
+:root {
+  --overlay-veil: rgba(0, 0, 0, 0.58);
+}
+
+/* Utilitaire CSS : classe .overlay-veil utilisable
+   directement si besoin sans composant React */
+.overlay-veil {
+  position: fixed;
+  inset: 0;
+  background-color: var(--overlay-veil);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
+/* ═══════════════════════════════════════════════
+   ANNEAU DE FOCUS UNIQUE
+   Remplace les focus rings disparates dans les composants.
+   index.css définit :focus-visible globalement ;
+   ici on expose les variables pour les composants
+   qui construisent leur propre ring (ex. tabs, cards).
+═══════════════════════════════════════════════ */
+:root {
+  --focus-ring-color:  color-mix(in srgb, var(--accent-primary) 78%, white);
+  --focus-ring-shadow: 0 0 0 4px var(--accent-subtle);
+  --focus-ring-radius: var(--radius-sm);
+}
+
+/* Classe utilitaire partagée pour les éléments interactifs
+   qui gèrent leur propre focus (tabs, cards cliquables…) */
+.focus-ring:focus-visible {
+  outline: 2px solid var(--focus-ring-color);
+  outline-offset: 2px;
+  border-radius: var(--focus-ring-radius);
+  box-shadow: var(--focus-ring-shadow);
+}
+
+/* ═══════════════════════════════════════════════
+   UTILITAIRES PORTAIL
+   Classe de base pour les portails React (createPortal).
+   Garantit que le contenu rendu dans #modal-root
+   reçoit les variables CSS du thème courant.
+═══════════════════════════════════════════════ */
+#modal-root {
+  /* Vide — garantit que le portail est dans le DOM.
+     Si absent, createPortal tombera en fallback sur document.body. */
+}
+
+/* ═══════════════════════════════════════════════
+   VERROU DE DÉFILEMENT
+   Appliqué sur <body> via useScrollLock.
+═══════════════════════════════════════════════ */
+body.scroll-locked {
+  overflow: hidden;
+  /* Compense le saut de layout causé par la disparition
+     de la scrollbar (uniquement si une scrollbar était présente) */
+  padding-right: var(--scrollbar-width, 0px);
+}

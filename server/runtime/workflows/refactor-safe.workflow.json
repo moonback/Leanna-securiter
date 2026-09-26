@@ -1,0 +1,50 @@
+{
+  "id": "refactor-safe",
+  "name": "Refactoring sécurisé",
+  "description": "Tests baseline → refactoring → re-test → review",
+  "steps": [
+    {
+      "id": "baseline",
+      "action": "agent_submit",
+      "args": {
+        "agentId": "test",
+        "title": "Tests de régression (baseline)",
+        "description": "Générer et exécuter des tests de régression pour: {{input.files}}"
+      },
+      "label": "Tests baseline"
+    },
+    {
+      "id": "refactor",
+      "action": "agent_submit",
+      "args": {
+        "agentId": "refactor",
+        "title": "Refactoring",
+        "description": "{{input.description}}"
+      },
+      "label": "Refactoring",
+      "dependsOn": ["baseline"]
+    },
+    {
+      "id": "retest",
+      "action": "agent_submit",
+      "args": {
+        "agentId": "test",
+        "title": "Re-exécution tests (validation)",
+        "description": "Vérifier que les tests passent après refactoring"
+      },
+      "label": "Validation tests",
+      "dependsOn": ["refactor"]
+    },
+    {
+      "id": "review",
+      "action": "agent_submit",
+      "args": {
+        "agentId": "review",
+        "title": "Review du refactoring",
+        "description": "Évaluer la qualité du code refactoré"
+      },
+      "label": "Code review",
+      "dependsOn": ["retest"]
+    }
+  ]
+}

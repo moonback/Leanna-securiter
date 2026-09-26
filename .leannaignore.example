@@ -1,0 +1,31 @@
+# .leannaignore — Liste d'exclusion de chemins pour l'agent Leanna
+#
+# Copiez ce fichier en `.leannaignore` à la racine de votre projet.
+# Chaque ligne décrit un dossier ou un motif de fichier que l'agent Leanna
+# N'A PAS le droit de modifier (écriture, création, suppression, renommage).
+#
+# ── Format (proche de .gitignore) ────────────────────────────────────────────
+#   - Une entrée par ligne, relative à la racine du projet.
+#   - Les lignes vides et celles commençant par `#` sont ignorées.
+#   - Un dossier bloque tout son contenu (récursif). Le `/` final est facultatif.
+#   - `*`  correspond à n'importe quelle suite de caractères sauf `/`.
+#   - `**` correspond à n'importe quelle profondeur de sous-dossiers.
+#   - `!`  en début de ligne ré-autorise un chemin (exception).
+#   - La dernière règle correspondante l'emporte (les `!` doivent venir après).
+#
+# Les modifications prennent effet immédiatement (pas de redémarrage requis).
+
+# Dossiers de secrets / credentials
+secrets/
+config/credentials/
+
+# Fichiers de configuration de production
+config/*.prod.json
+infra/production/
+
+# Documentation figée, sauf le guide de contribution
+docs/**
+!docs/CONTRIBUTING.md
+
+# Migrations de base de données déjà appliquées
+db/migrations/**

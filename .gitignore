@@ -1,0 +1,28 @@
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+.gemini-keys.json
+release/
+.Leanna/
+.kiro/
+.vscode/
+.Leanna-audit.log
+.Leanna-profile.json
+# TypeScript build info
+*.tsbuildinfo
+# task.md
+Leanna-prompt.md 
+graphify-out/
+# Fichiers de persistance Knowledge System (générés automatiquement au démarrage)
+# Ne jamais commiter ces fichiers — ils sont recréés par l'indexeur
+.project-knowledge.json
+.project-memory.json
+.Leanna-telegram.json
+.Leanna-strategy.json
+.Leanna-strategy.json.tmp
+

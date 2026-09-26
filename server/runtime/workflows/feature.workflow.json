@@ -1,0 +1,61 @@
+{
+  "id": "feature-complete",
+  "name": "Développement complet d'une feature",
+  "description": "Workflow standard : architecture → implémentation → tests → docs → review",
+  "steps": [
+    {
+      "id": "design",
+      "action": "agent_submit",
+      "args": {
+        "agentId": "architect",
+        "title": "Design architectural",
+        "description": "{{input.description}}"
+      },
+      "label": "Design architectural"
+    },
+    {
+      "id": "implement",
+      "action": "agent_submit",
+      "args": {
+        "agentId": "refactor",
+        "title": "Implémentation",
+        "description": "Implémenter selon le design: {{steps.design.result}}"
+      },
+      "label": "Implémentation",
+      "dependsOn": ["design"]
+    },
+    {
+      "id": "test",
+      "action": "agent_submit",
+      "args": {
+        "agentId": "test",
+        "title": "Tests",
+        "description": "Écrire les tests pour l'implémentation"
+      },
+      "label": "Tests",
+      "dependsOn": ["implement"]
+    },
+    {
+      "id": "docs",
+      "action": "agent_submit",
+      "args": {
+        "agentId": "docs",
+        "title": "Documentation",
+        "description": "Documenter les changements"
+      },
+      "label": "Documentation",
+      "dependsOn": ["implement"]
+    },
+    {
+      "id": "review",
+      "action": "agent_submit",
+      "args": {
+        "agentId": "review",
+        "title": "Code review final",
+        "description": "Review de l'implémentation et des tests"
+      },
+      "label": "Code review final",
+      "dependsOn": ["test", "docs"]
+    }
+  ]
+}

@@ -1,0 +1,199 @@
+BUSINESS SOURCE LICENSE 1.1
+
+Copyright (c) 2026 Maysson — Leanna
+
+Parameters
+
+Licensor: Mayss — Leanna
+
+Licensed Work: Leanna
+
+The Licensed Work includes the source code, software, documentation, configuration,
+and other materials contained in this repository that are owned by the Licensor,
+excluding third-party components that are distributed under their own licenses.
+
+Additional Use Grant: None.
+
+Change Date: September 2, 2031
+
+Change License: GNU General Public License version 3.0 or later (GPL-3.0-or-later)
+
+Terms
+
+The Licensor hereby grants you the right to copy, modify, create derivative
+works, redistribute, and make non-production use of the Licensed Work.
+
+No commercial production use is granted before the Change Date.
+
+The Additional Use Grant is None. Therefore, before the Change Date, any use
+of the Licensed Work in production requires a separate commercial license
+from the Licensor.
+
+COMMERCIAL USE RESTRICTION
+
+Before the Change Date, you may not use the Licensed Work, or any substantial
+portion of it, for commercial purposes without prior written authorization
+from the Licensor.
+
+For the purposes of this License, commercial use includes, without limitation:
+
+1. Selling the Licensed Work or any product substantially based on it.
+
+2. Offering the Licensed Work as a paid product, application, desktop
+   application, service, platform, hosted service, SaaS, or subscription.
+
+3. Providing a paid service to third parties using the Licensed Work.
+
+4. Incorporating the Licensed Work or a substantial portion of its source code
+   into a commercial product or commercial service.
+
+5. Using the Licensed Work to operate, support, or provide a commercial
+   service for customers, users, clients, or other third parties.
+
+6. Monetizing the Licensed Work through subscriptions, licenses, usage fees,
+   service fees, advertisements, paid features, or other commercial means.
+
+7. Redistributing the Licensed Work, modified or unmodified, as part of a
+   commercial product, commercial distribution, or paid software package.
+
+8. Offering a hosted, cloud, remote, managed, or API-based service whose
+   functionality is substantially derived from the Licensed Work.
+
+9. Using the Licensed Work internally for the primary purpose of generating
+   revenue, reducing operating costs, or delivering a paid service to
+   customers, unless such use is expressly authorized by the Licensor.
+
+10. Circumventing these restrictions by creating a substantially equivalent
+    commercial derivative, fork, wrapper, hosted service, or reimplementation
+    that incorporates or is substantially based on the Licensed Work.
+
+PERMITTED NON-COMMERCIAL USE
+
+Before the Change Date, the following uses are permitted without payment:
+
+* personal use;
+* educational use;
+* academic research;
+* security research;
+* experimentation;
+* evaluation;
+* testing;
+* development;
+* modification for non-commercial purposes;
+* creation of non-commercial derivative works;
+* redistribution for non-commercial purposes.
+
+Permitted non-commercial use must not be primarily intended to generate
+revenue or provide a commercial service to a third party.
+
+SOURCE AVAILABILITY
+
+The source code of the Licensed Work remains publicly available during the
+entire term of this License.
+
+Making the source code publicly available does not grant commercial rights
+before the Change Date.
+
+REDISTRIBUTION
+
+Before the Change Date, copies and modified versions of the Licensed Work may
+only be redistributed for purposes permitted by this License.
+
+Every redistribution must include:
+
+* this License;
+* the applicable copyright notices;
+* all notices required by applicable third-party licenses.
+
+No recipient may receive broader rights than those granted by this License.
+
+MODIFICATIONS AND DERIVATIVE WORKS
+
+You may modify the Licensed Work for permitted non-commercial purposes.
+
+Any modified version or derivative work that contains a substantial portion
+of the Licensed Work remains subject to this License before the Change Date.
+
+You may not relicense the Licensed Work, or a substantial portion of it,
+under the MIT License, Apache License, GPL, BSD, or another license before
+the Change Date unless expressly authorized in writing by the Licensor.
+
+THIRD-PARTY COMPONENTS
+
+This License applies only to code and materials owned by the Licensor.
+
+Third-party libraries, frameworks, dependencies, fonts, images, icons,
+documentation, and other components remain subject to their respective
+licenses.
+
+Nothing in this License overrides or changes the license of a third-party
+component.
+
+Users are responsible for complying with all applicable third-party licenses.
+
+TRADEMARKS
+
+This License does not grant permission to use the names, trademarks, logos,
+brand names, or other distinctive marks of Mayss or Leanna except as
+necessary to accurately identify the Licensed Work.
+
+No right is granted to represent a modified or derivative version as an
+official version of Leanna.
+
+CHANGE DATE
+
+On September 2, 2031, the Licensed Work will automatically become available
+under the Change License:
+
+GNU General Public License version 3.0 or later (GPL-3.0-or-later).
+
+From the Change Date onward, the commercial restrictions contained in this
+License no longer apply to the Licensed Work.
+
+Users may then use, copy, modify, distribute, and commercially exploit the
+Licensed Work according to the terms of GPL-3.0-or-later.
+
+VERSIONING
+
+Each version of the Licensed Work may have its own applicable Change Date.
+
+Unless expressly stated otherwise by the Licensor, a new major version of
+Leanna may establish a new Change Date and corresponding licensing terms.
+
+The licensing terms applicable to a particular version remain applicable to
+that version and are not retroactively changed by subsequent releases.
+
+TERMINATION
+
+Any rights granted under this License automatically terminate if you violate
+the terms of this License.
+
+Upon termination, you must cease use and distribution of the Licensed Work,
+except to the extent that applicable law provides otherwise.
+
+A later version of the Licensed Work becoming available under the Change
+License does not retroactively authorize conduct that violated this License
+before the Change Date.
+
+DISCLAIMER OF WARRANTY
+
+THE LICENSED WORK IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, NON-INFRINGEMENT, AND TITLE.
+
+IN NO EVENT SHALL THE LICENSOR OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR
+OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE LICENSED WORK OR
+THE USE OR OTHER DEALINGS IN THE LICENSED WORK.
+
+IMPORTANT NOTICE
+
+This software is not Open Source software before the Change Date.
+
+The Licensed Work is made available under the Business Source License 1.1
+with the parameters specified above.
+
+The Licensed Work is intended to become Open Source software on the Change
+Date under the GNU General Public License version 3.0 or later.
+
+Copyright (c) 2026 Maysson — Leanna

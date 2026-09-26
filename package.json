@@ -1,0 +1,129 @@
+{
+  "name": "Leanna",
+  "private": false,
+  "version": "1.2.0",
+  "license": "BUSL 1.1",
+  "author": "Maysson",
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "tsx server-bootstrap.ts",
+    "build": "vite build && esbuild server-bootstrap.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs && node scripts/copy-prompts.cjs",
+    "start": "node dist/server.cjs",
+    "desktop": "concurrently --kill-others --names dev,desktop --success command-desktop \"npm run dev\" \"node scripts/start-desktop.cjs\"",
+    "desktop:debug": "concurrently --kill-others --names dev,desktop --success command-desktop \"npm run dev\" \"node scripts/start-desktop.cjs --debug\"",
+    "preview": "vite preview",
+    "clean": "rm -rf dist server.js",
+    "lint": "node scripts/lint.cjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node --import tsx --test server/**/*.test.ts",
+    "test:soak": "cross-env LEANNA_SOAK=1 node --import tsx --test server/autonomy/TaskManager.soak.test.ts",
+    "audit:deps": "npm audit --production",
+    "audit:deps:full": "npm audit",
+    "pack:win": "npm run build && electron-builder --win --dir",
+    "dist:win": "npm run build && electron-builder --win",
+    "ui:audit": "node scripts/ui-audit.mjs",
+    "brain:smoke": "node scripts/brain-smoke.mjs",
+    "test:missions": "node scripts/test-agent-missions.mjs"
+  },
+  "build": {
+    "appId": "com.Leanna.os",
+    "productName": "Leanna ",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "assets/**/*",
+      "node_modules/**/*",
+      "package.json",
+      ".env.example"
+    ],
+    "asar": true,
+    "asarUnpack": [],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/images/icon-sombre.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Leanna "
+    }
+  },
+  "dependencies": {
+    "@google/genai": "^2.4.0",
+    "@monaco-editor/react": "^4.7.0",
+    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/exporter-trace-otlp-grpc": "^0.222.0",
+    "@opentelemetry/resources": "^2.11.0",
+    "@opentelemetry/sdk-trace-base": "^2.11.0",
+    "@opentelemetry/sdk-trace-node": "^2.11.0",
+    "@opentelemetry/semantic-conventions": "^1.43.0",
+    "@supabase/supabase-js": "^2.110.2",
+    "@tailwindcss/vite": "^4.1.14",
+    "@types/react-window": "^1.8.8",
+    "@vitejs/plugin-react": "^5.0.4",
+    "basic-ftp": "6.2.1",
+    "clsx": "2.1.1",
+    "compression": "^1.8.1",
+    "cva": "1.0.0-beta.2",
+    "dotenv": "^17.2.3",
+    "express": "^4.21.2",
+    "express-rate-limit": "^8.6.0",
+    "grammy": "^1.46.0",
+    "lucide-react": "^0.546.0",
+    "marked": "15.0.12",
+    "mermaid": "^11.4.1",
+    "monaco-editor": "^0.53.0",
+    "motion": "^12.23.24",
+    "multer": "^2.2.0",
+    "pdf-parse": "^2.4.5",
+    "puppeteer": "^25.3.0",
+    "react": "^19.0.1",
+    "react-dom": "^19.0.1",
+    "react-hotkeys-hook": "4.6.1",
+    "react-router-dom": "^7.18.1",
+    "react-window": "^2.3.0",
+    "react-window-tree": "^1.0.4",
+    "recharts": "3.10.1",
+    "redis": "^6.2.1",
+    "tree-sitter-javascript": "^0.25.0",
+    "tree-sitter-typescript": "^0.23.2",
+    "typescript": "^5.0.0",
+    "web-tree-sitter": "^0.27.0",
+    "ws": "^8.21.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/compression": "^1.8.1",
+    "@types/express": "^4.17.21",
+    "@types/multer": "^2.2.0",
+    "@types/node": "^22.20.1",
+    "@types/pdf-parse": "^1.1.5",
+    "@types/react": "19.1.8",
+    "@types/react-dom": "19.1.6",
+    "@types/ws": "^8.18.1",
+    "autoprefixer": "^10.4.21",
+    "concurrently": "^10.0.3",
+    "cross-env": "^7.0.3",
+    "electron": "^43.1.0",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.25.0",
+    "tailwindcss": "^4.1.14",
+    "tsx": "^4.23.1",
+    "vite": "^6.2.3",
+    "vite-plugin-monaco-editor": "^1.1.0",
+    "wait-on": "^9.0.10"
+  }
+}
