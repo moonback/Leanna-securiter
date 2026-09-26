@@ -213,12 +213,46 @@ export default function ScanView() {
   const [scanStatus, setScanStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle');
   const [scanLog, setScanLog] = useState<string[]>([]);
   const [currentWorkspace, setCurrentWorkspace] = useState<string>('');
+  const [sandboxPath, setSandboxPath] = useState<string>('');
+  const [sandboxActive, setSandboxActive] = useState<boolean>(false);
 
-  // Load current workspace
+  // Load current workspace and sandbox target
   useEffect(() => {
+    // 1. Récupérer l'état de la sandbox
+    fetch('/api/sandbox/status')
+      .then(r => r.json())
+      .then(d => {
+        if (d?.sandbox?.path) {
+          setSandboxPath(d.sandbox.path);
+          if (d.sandbox.active !== undefined) setSandboxActive(d.sandbox.active);
+          // Par défaut la cible reprend la sandbox
+          setConfig(c => ({
+            ...c,
+            target: c.target || d.sandbox.path,
+          }));
+        }
+      })
+      .catch(() => {});
+
+    // 2. Récupérer le workspace actif via self-root
     fetch('/api/self-root')
       .then(r => r.json())
-      .then(d => { if (d.root) setCurrentWorkspace(d.root); })
+      .then(d => {
+        const root = d.root || d.rootPath;
+        if (root) setCurrentWorkspace(root);
+        if (d.sandboxPath) {
+          setSandboxPath(d.sandboxPath);
+          setConfig(c => ({
+            ...c,
+            target: c.target || d.sandboxPath,
+          }));
+        } else if (root) {
+          setConfig(c => ({
+            ...c,
+            target: c.target || root,
+          }));
+        }
+      })
       .catch(() => {});
   }, []);
 
@@ -374,37 +408,82 @@ export default function ScanView() {
 
         {/* Target */}
         <section>
-          <h2 className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--text-muted)' }}>
-            Cible
-          </h2>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
+              Cible d'analyse
+            </h2>
+            {sandboxPath && (
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setConfig(c => ({ ...c, target: sandboxPath }))}
+                  className={`text-[11px] px-2.5 py-1 rounded-md transition-all font-medium flex items-center gap-1.5 border ${
+                    config.target === sandboxPath
+                      ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400'
+                      : 'border-transparent text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+                  }`}
+                  title="Analyser la copie isolée dans le sandbox pour un audit sans effet de bord"
+                >
+                  <Shield size={12} className={config.target === sandboxPath ? 'text-emerald-400' : ''} />
+                  Sandbox (Recommandé)
+                </button>
+                {currentWorkspace && currentWorkspace !== sandboxPath && (
+                  <button
+                    type="button"
+                    onClick={() => setConfig(c => ({ ...c, target: currentWorkspace }))}
+                    className={`text-[11px] px-2.5 py-1 rounded-md transition-all font-medium flex items-center gap-1.5 border ${
+                      config.target === currentWorkspace
+                        ? 'border-cyan-500/40 bg-cyan-500/10 text-cyan-400'
+                        : 'border-transparent text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+                    }`}
+                    title="Analyser directement le workspace principal"
+                  >
+                    <FolderOpen size={12} />
+                    Workspace
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
           <div
-            className="flex items-center gap-3 px-4 py-3 rounded-xl border"
-            style={{ borderColor: 'var(--border-base)', backgroundColor: 'var(--bg-panel)' }}
+            className="flex items-center gap-3 px-4 py-3 rounded-xl border transition-all"
+            style={{
+              borderColor: config.target === sandboxPath ? 'rgba(16, 185, 129, 0.4)' : 'var(--border-base)',
+              backgroundColor: 'var(--bg-panel)',
+            }}
           >
-            <FolderOpen size={15} style={{ color: 'var(--accent-primary)', flexShrink: 0 }} />
+            {config.target === sandboxPath ? (
+              <Shield size={16} className="text-emerald-400 flex-shrink-0" />
+            ) : (
+              <FolderOpen size={16} style={{ color: 'var(--accent-primary)', flexShrink: 0 }} />
+            )}
             <input
               type="text"
               value={config.target}
               onChange={e => setConfig(c => ({ ...c, target: e.target.value }))}
-              placeholder={currentWorkspace || 'Chemin vers le projet à analyser…'}
-              className="flex-1 bg-transparent text-sm outline-none"
+              placeholder={sandboxPath || currentWorkspace || 'Chemin vers le projet à analyser…'}
+              className="flex-1 bg-transparent text-sm outline-none font-mono"
               style={{ color: 'var(--text-primary)' }}
             />
-            {currentWorkspace && !config.target && (
-              <span
-                className="text-[10px] px-2 py-0.5 rounded-md"
-                style={{ backgroundColor: 'var(--accent-subtle)', color: 'var(--accent-primary)' }}
-              >
+            {config.target === sandboxPath && (
+              <span className="text-[10px] px-2.5 py-1 rounded-md font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                <CheckCircle2 size={11} /> Sandbox isolée
+              </span>
+            )}
+            {config.target === currentWorkspace && config.target !== sandboxPath && (
+              <span className="text-[10px] px-2.5 py-1 rounded-md font-semibold bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
                 Workspace actif
               </span>
             )}
           </div>
-          {currentWorkspace && (
-            <p className="text-[11px] mt-1.5 ml-1" style={{ color: 'var(--text-muted)' }}>
-              <Info size={10} className="inline mr-1" />
-              Laissez vide pour scanner le workspace actif : <code className="font-mono text-[10px]">{currentWorkspace}</code>
-            </p>
-          )}
+          <p className="text-[11px] mt-2 ml-1 flex items-center gap-1.5" style={{ color: 'var(--text-muted)' }}>
+            <Info size={11} className="flex-shrink-0" />
+            {config.target === sandboxPath ? (
+              <span>L'audit s'exécute en mode <strong className="text-emerald-400 font-semibold">sandbox isolé</strong> : vos fichiers sources sont protégés contre tout effet de bord.</span>
+            ) : (
+              <span>Chemin direct du code source à auditer. Cliquez sur <strong>Sandbox (Recommandé)</strong> pour analyser la copie isolée.</span>
+            )}
+          </p>
         </section>
 
         {/* Profiles */}

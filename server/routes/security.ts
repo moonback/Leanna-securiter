@@ -11,8 +11,24 @@ export const securityRouter = express.Router();
  */
 securityRouter.post("/scan", async (req, res) => {
   try {
-    const { scanners, excludePaths, target } = req.body || {};
-    const root = target || getProjectRoot() || process.cwd();
+    const { scanners, excludePaths, target, useSandbox } = req.body || {};
+    let root = target;
+
+    if (!root) {
+      if (useSandbox !== false) {
+        try {
+          const { getSandboxRoot } = await import("../utils/sandbox.js");
+          const fs = await import("fs");
+          const sbPath = getSandboxRoot();
+          if (fs.existsSync(sbPath)) {
+            root = sbPath;
+          }
+        } catch {}
+      }
+      if (!root) {
+        root = getProjectRoot() || process.cwd();
+      }
+    }
 
     const result = await securityOrchestrator.runScan(root, {
       scanners,

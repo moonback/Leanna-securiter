@@ -7,6 +7,27 @@ import { broadcastKnowledgeProgress } from '../utils/knowledgeBroadcaster.js';
 export function createSelfRootRouter(getWss: () => WebSocketServer | null): Router {
   const router = Router();
 
+  // GET /api/self-root
+  router.get('/', async (_req: Request, res: Response) => {
+    try {
+      const { SELF_ROOT, hasProject } = await import('../utils/selfRoot.js');
+      const { getSandboxRoot, getSandboxStatus } = await import('../utils/sandbox.js');
+      const root = hasProject() ? SELF_ROOT : null;
+      let sandbox: any = null;
+      try {
+        sandbox = getSandboxStatus();
+      } catch {}
+      res.json({
+        root,
+        rootPath: root,
+        sandboxPath: sandbox?.path || (root ? `${root}/.Leanna/sandbox` : null),
+        sandbox,
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // GET /api/self-root/status
   router.get('/status', async (_req: Request, res: Response) => {
     try {
