@@ -297,10 +297,28 @@ export default function FindingsView() {
     fetch('/api/security/findings')
       .then(r => r.ok ? r.json() : null)
       .then(data => {
-        if (data?.findings) {
-          setFindings(data.findings);
+        if (data?.findings && Array.isArray(data.findings)) {
+          const normalized = data.findings.map((f: any) => ({
+            id: f.id,
+            title: f.title || f.ruleName || 'Vulnérabilité sans titre',
+            severity: f.severity || 'medium',
+            cwe: Array.isArray(f.cwe) ? f.cwe.join(', ') : f.cwe,
+            owasp: Array.isArray(f.owasp) ? f.owasp.join(', ') : f.owasp,
+            scanner: f.scanner || 'sast',
+            file: f.location?.filePath || f.file || '',
+            line: f.location?.startLine ?? f.line,
+            snippet: f.location?.snippet || f.snippet,
+            description: f.description || '',
+            remediation: f.remediation,
+            cvss: f.cvssScore ?? f.cvss,
+            epss: f.epssScore ?? f.epss,
+            kev: f.cisaKev ?? f.kev ?? false,
+            status: f.status || 'open',
+            fingerprint: f.fingerprint,
+            detectedAt: f.firstSeen || f.detectedAt || new Date().toISOString(),
+          }));
+          setFindings(normalized);
         } else {
-          // Use mock data when API is not yet implemented
           setFindings(MOCK_FINDINGS);
         }
       })

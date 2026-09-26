@@ -193,9 +193,33 @@ export default function FindingDetailView() {
     fetch(`/api/security/findings/${id}`)
       .then(r => r.ok ? r.json() : null)
       .then(data => {
-        const f = data?.finding ?? MOCK_FINDING;
-        setFinding(f);
-        setStatus(f.status);
+        const raw = data?.finding ?? data;
+        if (raw && (raw.id || raw.title)) {
+          const normalized: Finding = {
+            id: raw.id,
+            title: raw.title || raw.ruleName || 'Vulnérabilité sans titre',
+            severity: raw.severity || 'medium',
+            cwe: Array.isArray(raw.cwe) ? raw.cwe.join(', ') : raw.cwe,
+            owasp: Array.isArray(raw.owasp) ? raw.owasp.join(', ') : raw.owasp,
+            scanner: raw.scanner || 'sast',
+            file: raw.location?.filePath || raw.file || '',
+            line: raw.location?.startLine ?? raw.line,
+            snippet: raw.location?.snippet || raw.snippet,
+            description: raw.description || '',
+            remediation: raw.remediation,
+            cvss: raw.cvssScore ?? raw.cvss,
+            epss: raw.epssScore ?? raw.epss,
+            kev: raw.cisaKev ?? raw.kev ?? false,
+            status: raw.status || 'open',
+            fingerprint: raw.fingerprint,
+            detectedAt: raw.firstSeen || raw.detectedAt || new Date().toISOString(),
+          };
+          setFinding(normalized);
+          setStatus(normalized.status);
+        } else {
+          setFinding(MOCK_FINDING);
+          setStatus(MOCK_FINDING.status);
+        }
       })
       .catch(() => { setFinding(MOCK_FINDING); setStatus(MOCK_FINDING.status); })
       .finally(() => setLoading(false));

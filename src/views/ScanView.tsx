@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Scan, Shield, Package, Key, Server, Globe, Play, Settings2,
@@ -197,6 +198,7 @@ function ProfileCard({
 // ─── Main View ────────────────────────────────────────────────────────────────
 
 export default function ScanView() {
+  const navigate = useNavigate();
   const [config, setConfig] = useState<ScanConfig>({
     target: '',
     profile: 'standard',
@@ -310,18 +312,21 @@ export default function ScanView() {
       }
 
       const data = await res.json();
-      setScanLog(l => [...l, `[done] Scan terminé — ${data.findingsCount ?? 0} vulnérabilités détectées`]);
+      const totalCount = typeof data.findingsCount === 'object' ? (data.findingsCount?.total ?? data.findings?.length ?? 0) : (data.findingsCount ?? data.findings?.length ?? 0);
+      setScanLog(l => [...l, `[done] Scan terminé — ${totalCount} vulnérabilité${totalCount > 1 ? 's' : ''} détectée${totalCount > 1 ? 's' : ''}`]);
       setScanStatus('done');
 
-      // Navigate to findings
-      setTimeout(() => { window.location.hash = '#/findings'; }, 800);
+      // Naviguer vers la vue des vulnérabilités
+      setTimeout(() => {
+        navigate('/findings');
+      }, 1200);
     } catch (e: any) {
       setScanLog(l => [...l, `[error] ${e.message || 'Erreur réseau'}`]);
       setScanStatus('error');
     } finally {
       setScanning(false);
     }
-  }, [activeScanners, config, currentWorkspace]);
+  }, [activeScanners, config, currentWorkspace, navigate]);
 
   return (
     <div
