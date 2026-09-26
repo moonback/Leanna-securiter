@@ -247,7 +247,11 @@ export type RuntimeEvent =
   | { type: "autonomy:stateChanged"; from: string; to: string; reason: string }
   | { type: "autonomy:health"; status: "healthy" | "degraded"; reason: string }
   | { type: "autonomy:taskCreated"; taskId: string; taskType: string; sourceEventId: string }
-  | { type: "autonomy:taskStateChanged"; taskId: string; taskType: string; from: string; to: string; error?: string };
+  | { type: "autonomy:taskStateChanged"; taskId: string; taskType: string; from: string; to: string; error?: string }
+  | { type: "autonomy:research:opened"; loopId: string; hypothesis: string; source: string }
+  | { type: "autonomy:research:tested"; loopId: string; approach: number; attempt: number; outcome: "supported" | "refuted" | "inconclusive" | "error"; detail: string }
+  | { type: "autonomy:research:refined"; loopId: string; fromApproach: number; toApproach: number; reason: string }
+  | { type: "autonomy:research:closed"; loopId: string; resolution: "confirmed" | "exhausted" | "dead_letter" | "aborted"; approaches: number; attempts: number; reason: string };
 
 export type RuntimeEventType = RuntimeEvent["type"];
 export type RuntimeEventHandler<T extends RuntimeEventType = RuntimeEventType> =

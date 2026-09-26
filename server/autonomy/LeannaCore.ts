@@ -11,6 +11,16 @@ import {
   type AutonomousTaskStatus,
   type TaskPersistence,
 } from "./TaskManager.js";
+import {
+  ResearchLoop,
+  researchLoopConfigFromEnv,
+  type ResearchLoopConfig,
+  type ResearchLoopEvent,
+  type ResearchLoopRecord,
+  type ResearchHypothesis,
+  type LabTestRunner,
+  type RefinementStrategy,
+} from "./ResearchLoop.js";
 
 export type LeannaRuntimeStatus =
   | "starting"
@@ -46,7 +56,11 @@ export type AutonomyEventType =
   | "autonomy:stateChanged"
   | "autonomy:health"
   | "autonomy:taskCreated"
-  | "autonomy:taskStateChanged";
+  | "autonomy:taskStateChanged"
+  | "autonomy:research:opened"
+  | "autonomy:research:tested"
+  | "autonomy:research:refined"
+  | "autonomy:research:closed";
 
 /**
  * Envelope pushed to WebSocket clients for the autonomy timeline. It mirrors the
@@ -63,6 +77,23 @@ export interface AutonomyBroadcastMessage {
 /** Consumer of autonomy events, typically a WebSocket fan-out. Best-effort. */
 export type AutonomyBroadcaster = (message: AutonomyBroadcastMessage) => void;
 
+/**
+ * Optional bounded autonomous research loop (ROADMAP §9.2). Extends the runtime
+ * with a hypothesis → lab test → observation → refinement cycle bounded by the
+ * same runtime limits (3 approaches × 2 attempts, timeout, circuit breaker,
+ * dead-letter). It is fail-closed and inert unless a `labRunner` is provided:
+ * with no runner, hypotheses can be submitted but every test resolves
+ * "inconclusive" and no active action is ever taken.
+ */
+export interface ResearchOptions {
+  /** Lab-only active-test executor. MUST sit behind the lab scope guard/manifest. */
+  labRunner?: LabTestRunner;
+  /** Override any of the runtime bounds; defaults come from the environment. */
+  config?: Partial<ResearchLoopConfig>;
+  /** Optional custom (still deterministic) refinement policy. */
+  strategy?: RefinementStrategy;
+}
+
 export interface LeannaCoreOptions {
   onTask?: (task: AutonomousTask) => Promise<void>;
   /** Optional closed-loop bridge into the existing mission executor. */
@@ -71,6 +102,8 @@ export interface LeannaCoreOptions {
   persistence?: AutonomyTaskStore;
   /** Optional real-time broadcaster for the autonomy timeline (e.g. WebSocket). */
   broadcaster?: AutonomyBroadcaster;
+  /** Optional bounded autonomous research loop. Off unless provided. */
+  research?: ResearchOptions;
 }
 
 const MAX_RECENT_FAILURES = 20;
@@ -85,6 +118,7 @@ export class LeannaCore {
   private readonly taskManager: TaskManager;
   private readonly heartbeat: HeartbeatService;
   private readonly executive?: AutonomousExecutive;
+  private readonly research?: ResearchLoop;
   private readonly unsubscribers: Array<() => void> = [];
   private readonly persistence?: AutonomyTaskStore;
   private broadcaster?: AutonomyBroadcaster;
@@ -122,6 +156,35 @@ export class LeannaCore {
         onEvent: (event) => this.broadcastExecutive(event),
       });
     }
+    if (options.research) {
+      this.research = new ResearchLoop(
+        options.research.labRunner,
+        { ...researchLoopConfigFromEnv(), ...options.research.config },
+        (event) => this.handleResearchEvent(event),
+        options.research.strategy,
+      );
+    }
+  }
+
+  /**
+   * Submit a hypothesis into the bounded research loop. Returns the loop record,
+   * or undefined when the loop is not enabled or the submission was refused
+   * (deduped, category circuit open). The loop enforces the same runtime bounds
+   * as the TaskManager (3 approaches × 2 attempts, timeout, circuit breaker,
+   * dead-letter) and is inert (fail-closed) unless a lab runner was wired.
+   */
+  submitHypothesis(hypothesis: ResearchHypothesis): ResearchLoopRecord | undefined {
+    return this.research?.submit(hypothesis);
+  }
+
+  /** Snapshot of the research loops (most recent first). Empty when disabled. */
+  getResearchLoops(): ResearchLoopRecord[] {
+    return this.research?.list() ?? [];
+  }
+
+  /** Whether the research loop can actually run active lab tests. */
+  get researchArmed(): boolean {
+    return this.research?.armed ?? false;
   }
 
   start(): void {
@@ -152,6 +215,10 @@ export class LeannaCore {
       "autonomy:health",
       "autonomy:taskCreated",
       "autonomy:taskStateChanged",
+      "autonomy:research:opened",
+      "autonomy:research:tested",
+      "autonomy:research:refined",
+      "autonomy:research:closed",
     ];
     for (const event of events) {
       this.unsubscribers.push(this.events.on(event, (e) => this.broadcast(e as RuntimeEvent)));
@@ -201,6 +268,7 @@ export class LeannaCore {
     this.heartbeat.stop();
     this.unsubscribers.splice(0).forEach((unsubscribe) => unsubscribe());
     await this.taskManager.stop();
+    await this.research?.stop();
     this.started = false;
   }
 
@@ -258,6 +326,20 @@ export class LeannaCore {
     try {
       this.broadcaster({ type: "autonomy_event", event: event.type as AutonomyEventType, timestamp: new Date(event.timestamp).toISOString(), payload: event });
     } catch { /* observability is best-effort */ }
+  }
+
+  /**
+   * Forward research-loop events onto the shared EventBus. `subscribeTimeline`
+   * already fans these to the real-time broadcaster, so the loop is observable
+   * exactly like every other autonomy signal. A dead-lettered loop degrades
+   * health, mirroring how a dead-lettered task is surfaced.
+   */
+  private handleResearchEvent(event: ResearchLoopEvent): void {
+    this.events.emit(event as RuntimeEvent);
+    if (event.type === "autonomy:research:closed" && event.resolution === "dead_letter") {
+      this.state.recentFailures = [`research ${event.loopId}: ${event.reason}`, ...this.state.recentFailures].slice(0, MAX_RECENT_FAILURES);
+      this.state.health = "degraded";
+    }
   }
 
   private handleTaskStateChange(task: AutonomousTask, previous: AutonomousTaskStatus): void {

@@ -22,6 +22,7 @@ export type {
   AutonomyBroadcaster,
   AutonomyBroadcastMessage,
   AutonomyEventType,
+  ResearchOptions,
 } from "./LeannaCore.js";
 export { HeartbeatService, heartbeatConfigFromEnv } from "./HeartbeatService.js";
 export { PerceptionEngine } from "./PerceptionEngine.js";
@@ -30,3 +31,18 @@ export type { AutonomousGoal, AutonomousGoalSource, AutonomousGoalStatus, Observ
 export { TaskManager, taskManagerConfigFromEnv } from "./TaskManager.js";
 export type { AutonomousTask, AutonomousTaskStatus, TaskManagerConfig, TaskPersistence } from "./TaskManager.js";
 export { AutonomyPersistence } from "./AutonomyPersistence.js";
+
+export { ResearchLoop, researchLoopConfigFromEnv, defaultRefinementStrategy } from "./ResearchLoop.js";
+export type {
+  ResearchLoopConfig,
+  ResearchLoopRecord,
+  ResearchLoopEvent,
+  ResearchLoopEventSink,
+  ResearchHypothesis,
+  ResearchObservation,
+  ResearchOutcome,
+  ResearchResolution,
+  ResearchTestRequest,
+  LabTestRunner,
+  RefinementStrategy,
+} from "./ResearchLoop.js";
