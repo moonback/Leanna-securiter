@@ -48,6 +48,7 @@ securityRouter.post("/scan", async (req, res) => {
       triggerType,
       changedFiles,
       policyOverride,
+      dast,             // opt-in DAST: { target, optIn, endpoints?, maxRequests?, requestTimeoutMs? }
       // legacy fields (backward compat)
       scanners,
       excludePaths,
@@ -68,10 +69,26 @@ securityRouter.post("/scan", async (req, res) => {
       if (!root) root = getProjectRoot() || process.cwd();
     }
 
+    // Normalise l'opt-in DAST : ne le transmettre que si une cible est fournie.
+    // La porte de politique (localhost autorisé, prod refusée) est appliquée
+    // dans l'orchestrateur ; ici on se contente de propager l'intention.
+    const dastOption =
+      dast && typeof dast === "object" && dast.target
+        ? {
+            target: String(dast.target),
+            optIn: dast.optIn === true,
+            endpoints: Array.isArray(dast.endpoints) ? dast.endpoints : undefined,
+            maxRequests: typeof dast.maxRequests === "number" ? dast.maxRequests : undefined,
+            requestTimeoutMs:
+              typeof dast.requestTimeoutMs === "number" ? dast.requestTimeoutMs : undefined,
+          }
+        : undefined;
+
     const result = await securityOrchestrator.runScan(root, {
       profile: profile ?? "standard",
       triggerType: triggerType ?? "api",
       changedFiles,
+      dast: dastOption,
       policyOverride: policyOverride ?? (excludePaths ? { excludePaths } : undefined),
     });
 

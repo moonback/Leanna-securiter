@@ -24,6 +24,7 @@ import {
   type ScanExecutionResult,
   type AttackSurfaceGraph,
   type ScanProfileType,
+  type DastOptions,
 } from '../orchestrator/SecurityOrchestrator.js';
 import type { Finding, FindingStatus } from '../findings/Finding.js';
 import type { FindingFilterOptions } from '../orchestrator/FindingManager.js';
@@ -54,6 +55,12 @@ export interface AuditOptions {
   onlineEnrichment?: boolean;
   /** Liste de fichiers modifiés (ex. git diff) pour un audit ciblé. */
   changedFiles?: string[];
+  /**
+   * Analyse dynamique opt-in. Fournie uniquement quand l'utilisateur active
+   * explicitement la DAST et cible une URL autorisée par la politique
+   * (localhost). Ignorée en l'absence d'opt-in ou de cible.
+   */
+  dast?: DastOptions;
 }
 
 export interface SecurityCapability {
@@ -145,10 +152,26 @@ export class SecurityCapabilityGateway implements SecurityCapability {
     const targetDir = this.resolveInsideWorkspace(options.targetPath);
     const profile = MODE_TO_PROFILE[options.mode ?? 'standard'];
 
+    // Garde-fou DAST : si une analyse dynamique est demandée, valider la cible
+    // via la politique AVANT de lancer le scan. Une cible refusée fait échouer
+    // proprement (SecurityCapabilityDeniedError) plutôt que d'être ignorée
+    // silencieusement au fond de l'orchestrateur.
+    let dast: DastOptions | undefined;
+    if (options.dast && options.dast.target) {
+      const decision = this.policy.canRunDast(options.dast.target, options.dast.optIn === true);
+      if (decision.effect === 'deny') {
+        throw new SecurityCapabilityDeniedError(`DAST refusée : ${decision.reason}`);
+      }
+      // 'approval' et 'allow' sont transmis ; l'orchestrateur relance la porte
+      // et n'exécute réellement que sur 'allow' (localhost autorisé).
+      dast = { ...options.dast, optIn: options.dast.optIn === true };
+    }
+
     const result = await this.orchestrator.runScan(targetDir, {
       profile,
       triggerType: 'api',
       changedFiles: options.changedFiles,
+      dast,
       // L'enrichissement réseau est une décision de politique explicite.
       policyOverride: options.onlineEnrichment === false
         ? { scanners: { sast: true, sca: false, secrets: true, iac: true, dast: false } }

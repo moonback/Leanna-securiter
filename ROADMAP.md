@@ -26,7 +26,7 @@ Principes directeurs :
 | SCA — Supply Chain (OSV/NVD) | ✅ | `DependencyScanner` : CVE, enrichissement EPSS/KEV en ligne, inventaire SBOM. |
 | Secrets Hunter (entropie de Shannon) | ✅ | `SecretsScanner` : clés AWS/GCP/GitHub/Stripe/OpenAI, clés privées. |
 | IaC (Docker / K8s / Terraform) | ✅ | `IacScanner` : root container, tags `latest`, privileged, SG exposés. |
-| DAST — Fuzzing d'API (opt-in) | 🚧 | Runner runtime non destructif ; validation dynamique des findings SAST. |
+| DAST — Fuzzing d'API (opt-in) | ✅ | `DastScanner` : runner runtime non destructif (GET/HEAD/OPTIONS uniquement, timeouts/plafonds), gate `canRunDast` (localhost autorisé, prod refusée) ; en-têtes manquants, banner disclosure, redirection HTTP, cookies non sécurisés, 5xx ; validation dynamique des findings SAST (corroboration → `confirmed`). |
 | SAST inter-procédural (call-graph) | 🔭 | Propagation de taint à travers les frontières de fonctions/fichiers. |
 | Analyse de licences (compatibilité) | 🔭 | Détection GPL/copyleft dans un contexte propriétaire. |
 | Détection de typosquats (dépendances) | 💡 | Similarité de noms vs registres connus. |
@@ -115,6 +115,7 @@ Principes directeurs :
 
 ## 9. Corrections récentes
 
+- **DAST livrée (opt-in, non destructive)** — la capacité restait une coquille : la politique (`canRunDast`, classification de cible) et le rôle `dast_runner` existaient, mais aucun scanner ne tournait et le flag `dast: true` du profil `full` était inerte. Le `DastScanner` réel est désormais branché dans l'orchestrateur (étape 4bis), derrière une triple porte (scanner actif + opt-in explicite + `canRunDast === allow`). Il n'émet que des requêtes d'observation inoffensives (GET/HEAD/OPTIONS, redirections manuelles, timeouts et plafond de requêtes) et corrobore dynamiquement les findings SAST exposés en HTTP, les promouvant de `open` à `confirmed` sans jamais les exploiter. Cible acceptée en automatique : localhost ; staging/inconnu → approbation ; production → refus.
 - **Gate bloquant abusif** — un scan `full` à la demande bloquait dès qu'une CVE `medium` existait dans les dépendances transitives (`BLOCKED | 24 findings (0C 0H)`). Le gate est désormais réservé aux déclencheurs CI/CD (`git_commit` / `pre_push`) ; les scans manuels restent `completed` et informatifs.
 - **Rapports non persistés** — l'orchestrateur générait SARIF/SBOM en mémoire sans jamais les écrire. Les rapports sont maintenant écrits automatiquement dans `.Leanna/sandbox/security-reports/`.
 - **Frontmatter des prompts ignoré** — le parser ne comprenait que l'ancien format HTML-comment ; le bloc YAML fuitait dans le contenu. Le parser gère désormais les deux formats et alimente réellement la sélection de sections.
@@ -122,4 +123,4 @@ Principes directeurs :
 
 ---
 
-_Dernière mise à jour : 26 septembre 2026._
+_Dernière mise à jour : 26 septembre 2026 — DAST opt-in livrée._

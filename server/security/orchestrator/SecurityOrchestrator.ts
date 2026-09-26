@@ -37,6 +37,8 @@ import { scanFileForSecrets } from '../scanners/SecretsScanner.js';
 import { scanIacFile } from '../scanners/IacScanner.js';
 import { scanDependencies } from '../scanners/DependencyScanner.js';
 import { analyzeFileTaint } from '../scanners/TaintAnalyzer.js';
+import { runDastScan, type DastEndpoint } from '../scanners/DastScanner.js';
+import { SecurityPolicyEngine } from '../policy/SecurityPolicyEngine.js';
 
 // ---------------------------------------------------------------------------
 // Re-exports for external consumers
@@ -45,6 +47,29 @@ import { analyzeFileTaint } from '../scanners/TaintAnalyzer.js';
 export type { ScanProfileType };
 export type { ScanTriggerEvent, TriggerType };
 export type { FindingFilterOptions, TriageAuditEntry };
+export type { DastEndpoint };
+
+/**
+ * Configuration de l'analyse dynamique (DAST), strictement opt-in.
+ * La DAST ne tourne QUE si :
+ *   - le scanner `dast` est actif dans la politique (profil `full` ou custom),
+ *   - `dast.target` est fourni,
+ *   - `SecurityPolicyEngine.canRunDast(target, optIn=true)` renvoie `allow`.
+ * Une cible `staging`/`unknown` (→ `approval`) ou `production` (→ `deny`) NE
+ * lance PAS la DAST automatiquement : elle est refusée et journalisée.
+ */
+export interface DastOptions {
+  /** Base URL de la cible runtime (ex: http://localhost:3000). */
+  target: string;
+  /** Opt-in explicite requis par la politique. Défaut : false (refus). */
+  optIn?: boolean;
+  /** Endpoints à sonder (facultatif ; racine `/` par défaut). */
+  endpoints?: DastEndpoint[];
+  /** Plafond de requêtes réseau. */
+  maxRequests?: number;
+  /** Timeout par requête (ms). */
+  requestTimeoutMs?: number;
+}
 
 // ---------------------------------------------------------------------------
 // Public interfaces
@@ -189,6 +214,8 @@ export class SecurityOrchestrator {
       triggerType?: TriggerType;
       /** Caller-supplied changed file list (e.g. from git diff) */
       changedFiles?: string[];
+      /** Analyse dynamique opt-in (voir DastOptions). */
+      dast?: DastOptions;
     } = {}
   ): Promise<ScanExecutionResult> {
     const triggerType: TriggerType = options.triggerType ?? 'api';
@@ -209,7 +236,7 @@ export class SecurityOrchestrator {
     return this.scanQueue.enqueue<ScanExecutionResult>(
       targetDir,
       priority,
-      () => this._executeScan(targetDir, policy, triggerEvent)
+      () => this._executeScan(targetDir, policy, triggerEvent, options.dast)
     );
   }
 
@@ -220,7 +247,8 @@ export class SecurityOrchestrator {
   private async _executeScan(
     targetDir: string,
     policy: ScanPolicy,
-    trigger: ScanTriggerEvent
+    trigger: ScanTriggerEvent,
+    dast?: DastOptions
   ): Promise<ScanExecutionResult> {
     const scanId   = `scan-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
     const startTime = new Date();
@@ -319,10 +347,82 @@ export class SecurityOrchestrator {
     }
 
     // ------------------------------------------------------------------
+    // 4bis. DAST — analyse dynamique runtime (opt-in, non destructive).
+    //
+    // Portes cumulatives, refus par défaut :
+    //   (a) scanner `dast` actif dans la politique (profil `full`/custom),
+    //   (b) cible fournie + opt-in explicite,
+    //   (c) SecurityPolicyEngine.canRunDast(target, optIn) === 'allow'.
+    // Toute cible classée `approval` (staging/unknown) ou `deny` (production)
+    // est refusée ici : la DAST automatique ne cible QUE le localhost autorisé.
+    // Les findings SAST déjà collectés servent de base à la validation runtime.
+    // ------------------------------------------------------------------
+    const corroboratedFingerprints: string[] = [];
+    if (policy.isScannerActive('dast')) {
+      if (!dast || !dast.target || !dast.optIn) {
+        console.info(
+          `[SecurityOrchestrator][${scanId}] DAST ignorée : ` +
+          `${!dast?.target ? 'aucune cible' : 'opt-in explicite absent'}.`
+        );
+      } else {
+        const policyEngine = new SecurityPolicyEngine(targetDir);
+        const decision = policyEngine.canRunDast(dast.target, dast.optIn === true);
+        if (decision.effect !== 'allow') {
+          console.warn(
+            `[SecurityOrchestrator][${scanId}] ⛔ DAST refusée (${decision.effect}) : ` +
+            `${decision.reason} [${dast.target}]`
+          );
+        } else {
+          try {
+            const sastSoFar = rawFindings.filter((f) => f.scanner === 'sast');
+            const dastRes = await runDastScan({
+              target: dast.target,
+              endpoints: dast.endpoints,
+              sastFindings: sastSoFar,
+              maxRequests: dast.maxRequests,
+              requestTimeoutMs: dast.requestTimeoutMs,
+            });
+            rawFindings.push(...dastRes.findings);
+            // Les findings SAST corroborés dynamiquement seront promus 'confirmed'
+            // après ingest (le FindingManager peut ré-attribuer des IDs).
+            for (const id of dastRes.corroboratedSastIds) {
+              const f = sastSoFar.find((x) => x.id === id);
+              if (f) corroboratedFingerprints.push(f.fingerprint);
+            }
+            console.info(
+              `[SecurityOrchestrator][${scanId}] DAST → ${dastRes.findings.length} finding(s) | ` +
+              `${dastRes.requestsSent} requête(s) | ` +
+              `${dastRes.corroboratedSastIds.length} SAST corroboré(s) | ` +
+              `${dastRes.unreachable.length} injoignable(s)`
+            );
+          } catch (err) {
+            console.error(`[SecurityOrchestrator][${scanId}] DAST error:`, err);
+          }
+        }
+      }
+    }
+
+    // ------------------------------------------------------------------
     // 5. Ingest into FindingManager (dedup by SARIF fingerprint +
     //    preservation of manual triage states)
     // ------------------------------------------------------------------
     const uniqueFindings = this.findingManager.ingest(rawFindings);
+
+    // Promotion des findings SAST corroborés par la DAST : passage 'open' →
+    // 'confirmed' (preuve statique + observation runtime concordantes).
+    if (corroboratedFingerprints.length > 0) {
+      const toConfirm = new Set(corroboratedFingerprints);
+      for (const f of uniqueFindings) {
+        if (f.scanner === 'sast' && f.status === 'open' && toConfirm.has(f.fingerprint)) {
+          this.findingManager.updateStatus(
+            f.id,
+            'confirmed',
+            'Corroboré dynamiquement par le runner DAST (route exposée observée, sans exploitation).',
+            'dast_runner'
+          );
+        }
+      }
+    }
 
     // ------------------------------------------------------------------
     // 6. Blocking gate evaluation
