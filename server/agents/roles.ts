@@ -252,6 +252,11 @@ const securityAgent: AgentDefinition = {
   role: "security",
   name: "Agent Sécurité & Audit",
   description: "Audit de sécurité du code, détection de failles OWASP, fuites de tokens/secrets, validation des entrées et analyse des dépendances.",
+  // Agent en LECTURE SEULE. On retire volontairement `run_project_command`
+  // (exécution shell arbitraire) et `knowledge_memory_add` (écriture mémoire) :
+  // l'audit sécurité ne doit jamais servir de vecteur d'exécution ou de
+  // persistance. Les capacités de scan sont exposées via des outils read-only
+  // gouvernés (security_audit / SAST / SCA + lecture des findings/surface).
   capabilities: [
     "read_project_file",
     "list_project_files",
@@ -260,10 +265,12 @@ const securityAgent: AgentDefinition = {
     "read_file_outline",
     "verify_lint",
     "verify_typecheck",
-    "run_project_command",
+    // Capacités d'audit sécurité (non mutatives)
+    "security_audit",
+    "security_sast",
+    "security_sca",
     "knowledge_build_context",
     "knowledge_memory_search",
-    "knowledge_memory_add",
     "reasoning_think",
   ],
   systemPrompt: buildAgentPrompt("security"),

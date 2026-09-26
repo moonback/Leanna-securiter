@@ -15,7 +15,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { Skill, validateArgs } from '../base.js';
-import { getProjectRoot, EXCLUDED_DIRS, TEXT_FILE_EXT } from '../codebaseHelpers.js';
+import { getProjectRoot, normalizeProjectPath, EXCLUDED_DIRS, TEXT_FILE_EXT } from '../codebaseHelpers.js';
 import type { Finding } from '../../security/findings/Finding.js';
 
 // Import des sous-scanners
@@ -30,8 +30,6 @@ import { scanFileSecrets } from './secrets/regexScanner.js';
 import { scanDockerfile } from './iac/dockerfileScanner.js';
 import { scanKubernetesManifest } from './iac/k8sScanner.js';
 import { scanTerraformFile } from './iac/terraformScanner.js';
-import { analyzeHttpHeaders } from './dast/headerScanner.js';
-import { fuzzApiEndpoints } from './dast/apiFuzzer.js';
 import { deduplicateFindings } from './normalize/findingDedupe.js';
 import { exportToSarif } from './normalize/sarifBuilder.js';
 import { computePriorityScore } from './score/priorityEngine.js';
@@ -120,6 +118,60 @@ function collectProjectFiles(root: string): { files: string[]; skipped: number }
   return { files, skipped };
 }
 
+/**
+ * Résout un chemin cible d'audit **strictement à l'intérieur du workspace**.
+ *
+ * Contrairement à l'ancienne résolution (`path.isAbsolute ? p : join(root, p)`),
+ * cette fonction refuse par défaut :
+ *   - tout chemin absolu (POSIX, Windows, lettres de lecteur, UNC),
+ *   - toute remontée hors du workspace via `..`,
+ *   - toute cible dont le realpath sort du workspace (protection symlink/junction).
+ *
+ * Un audit de sécurité ne doit jamais devenir un moyen indirect de lire un
+ * fichier arbitraire de la machine. En cas de chemin hors périmètre, renvoie
+ * `null` (le refus est traité par l'appelant).
+ *
+ * @param targetPath Chemin fourni par l'appelant (optionnel → racine du workspace).
+ * @returns Chemin absolu canonique contenu dans le workspace, ou `null` si refusé.
+ */
+export function resolveAuditTargetInsideWorkspace(targetPath?: string): string | null {
+  const root = getProjectRoot();
+  if (!root) return null;
+
+  // Sans cible → racine du workspace.
+  if (targetPath === undefined || targetPath === null || targetPath.trim() === '' || targetPath.trim() === '.') {
+    return path.resolve(root);
+  }
+
+  // normalizeProjectPath refuse déjà chemins absolus / lettres de lecteur / UNC / `..`.
+  const contained = normalizeProjectPath(targetPath);
+  if (!contained) return null;
+
+  // Défense en profondeur : vérifier que le realpath reste sous le workspace
+  // (protège contre symlinks et jonctions Windows pointant à l'extérieur).
+  try {
+    const realRoot = fs.realpathSync(path.resolve(root));
+    const realTarget = fs.existsSync(contained) ? fs.realpathSync(contained) : contained;
+    const rel = path.relative(realRoot, realTarget);
+    if (rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) {
+      return null;
+    }
+  } catch {
+    return null;
+  }
+
+  return contained;
+}
+
+/** Message de refus standard lorsqu'une cible sort du workspace. */
+function outsideWorkspaceError(target: string) {
+  return {
+    error: `Chemin hors du workspace refusé : "${target}". ` +
+      `L'audit de sécurité est confiné à la racine du workspace ` +
+      `(chemins absolus et remontées ".." interdits).`,
+  };
+}
+
 export const securitySkill: Skill = {
   name: "security_audit",
   metadata: {
@@ -193,7 +245,8 @@ export const securitySkill: Skill = {
 
     if (name === "security_sast") {
       const { filePath } = validateArgs(securitySkill.inputSchemas!.security_sast, args ?? {}, name);
-      const absPath = path.isAbsolute(filePath) ? filePath : path.join(root, filePath);
+      const absPath = resolveAuditTargetInsideWorkspace(filePath);
+      if (!absPath) return outsideWorkspaceError(filePath);
       if (!fs.existsSync(absPath)) return { error: `Fichier introuvable : ${filePath}` };
       const content = fs.readFileSync(absPath, 'utf8');
 
@@ -217,7 +270,8 @@ export const securitySkill: Skill = {
 
     if (name === "security_sca") {
       const { targetDir } = validateArgs(securitySkill.inputSchemas!.security_sca, args ?? {}, name);
-      const dir = targetDir ? (path.isAbsolute(targetDir) ? targetDir : path.join(root, targetDir)) : root;
+      const dir = resolveAuditTargetInsideWorkspace(targetDir);
+      if (!dir) return outsideWorkspaceError(targetDir ?? '');
       const scaRes = await runFullScaScan(dir);
 
       return {
@@ -234,9 +288,8 @@ export const securitySkill: Skill = {
         name
       );
 
-      const targetDir = targetPath
-        ? (path.isAbsolute(targetPath) ? targetPath : path.join(root, targetPath))
-        : root;
+      const targetDir = resolveAuditTargetInsideWorkspace(targetPath);
+      if (!targetDir) return outsideWorkspaceError(targetPath ?? '');
 
       const startedAt = Date.now();
       const rawFindings: Finding[] = [];
@@ -322,12 +375,24 @@ export const securitySkill: Skill = {
           medium: summary.medium,
           low: summary.low,
         },
-        advisories: scaRes.findings.map((f) => ({
-          name: f.ruleName || f.title,
-          severity: f.severity,
-          range: f.location?.snippet,
-          fixAvailable: true,
-        })),
+        advisories: scaRes.findings.map((f) => {
+          // La disponibilité d'un correctif est dérivée de metadata.fixedVersion
+          // (renseignée par le DependencyScanner à partir des plages OSV).
+          // Valeur "inconnue" ou absente → on ne prétend PAS qu'un correctif existe.
+          const fixedVersion = (f.metadata as { fixedVersion?: string } | undefined)?.fixedVersion;
+          const hasReal =
+            typeof fixedVersion === 'string' &&
+            fixedVersion.trim() !== '' &&
+            fixedVersion.toLowerCase() !== 'inconnue';
+          const fixAvailable: boolean | 'unknown' = hasReal ? true : 'unknown';
+          return {
+            name: f.ruleName || f.title,
+            severity: f.severity,
+            range: f.location?.snippet,
+            fixAvailable,
+            ...(hasReal ? { fixedVersion } : {}),
+          };
+        }),
         message: `Audit SCA terminé (${scaRes.totalDependencies} dépendances analysées).`,
       };
 
