@@ -29,6 +29,7 @@ import type { Finding, FindingStatus } from '../findings/Finding.js';
 import type { FindingFilterOptions } from '../orchestrator/FindingManager.js';
 import { SecurityPolicyEngine, type PolicyDecision } from '../policy/SecurityPolicyEngine.js';
 import { ThreatModelEngine, type ThreatModel } from '../threat/ThreatModelEngine.js';
+import { SecurityGraph } from '../graph/SecurityGraph.js';
 
 // ---------------------------------------------------------------------------
 // Modes d'audit exposés à Leanna (section 14 du plan)
@@ -75,6 +76,11 @@ export interface SecurityCapability {
    * (ou d'un filtre optionnel) et des points d'entrée découverts.
    */
   generateThreatModel(filters?: FindingFilterOptions): ThreatModel;
+  /**
+   * Fusionne findings + surface d'attaque + modèle de menace en un graphe de
+   * sécurité unifié et interrogeable (section 17 du plan).
+   */
+  generateSecurityGraph(filters?: FindingFilterOptions): SecurityGraph;
 }
 
 // ---------------------------------------------------------------------------
@@ -190,6 +196,13 @@ export class SecurityCapabilityGateway implements SecurityCapability {
   generateThreatModel(filters?: FindingFilterOptions): ThreatModel {
     const findings = this.orchestrator.getAllFindings(filters ?? { status: 'open' });
     return this.threatEngine.build(findings);
+  }
+
+  generateSecurityGraph(filters?: FindingFilterOptions): SecurityGraph {
+    const findings = this.orchestrator.getAllFindings(filters ?? { status: 'open' });
+    const attackSurface = this.orchestrator.getAttackSurface();
+    const threatModel = this.threatEngine.build(findings);
+    return SecurityGraph.build({ findings, attackSurface, threatModel });
   }
 }
 
