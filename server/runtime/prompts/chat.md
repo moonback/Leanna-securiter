@@ -1,7 +1,7 @@
 ---
 id: chat
-priority: 60
-condition: mode === "chat"
+priority: 15
+condition: mode === "ask"
 tokensBudget: 250
 ---
 
