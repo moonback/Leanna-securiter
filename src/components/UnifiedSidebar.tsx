@@ -24,6 +24,14 @@ import {
   FolderOpen,
   BarChart2,
   Activity,
+  // Security icons
+  Shield,
+  Scan,
+  AlertTriangle,
+  Network,
+  FileJson,
+  Tag,
+  Code2,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -228,18 +236,20 @@ export const UnifiedSidebar = memo(function UnifiedSidebar(props: UnifiedSidebar
         aria-label="Navigation principale"
       >
         {/* ═══ BRAND LOGO ═══ */}
-        <BrandLogo theme={theme} onNavigate={() => { navigate('/ide'); setMobileOpen(false); }} />
+        <BrandLogo theme={theme} onNavigate={() => { navigate('/scan'); setMobileOpen(false); }} />
         <NoWorkspaceBadge />
 
-      {/* ═══ IDE TOOLS ═══ */}
+      {/* ═══ SECURITY CONSOLE OR IDE TOOLS ═══ */}
       <div className="flex-1 w-full flex flex-col min-h-0">
-        {context === 'ide' && (
+        {context === 'ide' ? (
           <IDEToolsSections
             state={state}
             actions={actions}
             assistantConnected={props.assistantConnected ?? false}
             skipAnimation={hasAnimatedRef.current}
           />
+        ) : (
+          <SecurityConsoleNavSection currentPath={location.pathname} navigate={navigate} />
         )}
 
         {/* Spacer */}
@@ -473,8 +483,77 @@ function BrandLogo({ theme, onNavigate }: { theme: string; onNavigate: () => voi
         />
         
         {/* Tooltip */}
-        <div className="sidebar-tooltip">Retour à l'éditeur</div>
+        <div className="sidebar-tooltip">Accueil Sécurité (Scan)</div>
       </motion.button>
+    </div>
+  );
+}
+
+function SecurityConsoleNavSection({
+  currentPath,
+  navigate,
+}: {
+  currentPath: string;
+  navigate: (path: string) => void;
+}) {
+  const items = [
+    {
+      id: 'scan',
+      path: '/scan',
+      icon: Scan,
+      title: 'Scan & Audit',
+      active: currentPath === '/scan' || currentPath === '/',
+    },
+    {
+      id: 'findings',
+      path: '/findings',
+      icon: AlertTriangle,
+      title: 'Vulnérabilités',
+      active: currentPath.startsWith('/findings'),
+    },
+    {
+      id: 'surface',
+      path: '/surface',
+      icon: Network,
+      title: "Surface d'attaque",
+      active: currentPath === '/surface',
+    },
+    {
+      id: 'report',
+      path: '/report',
+      icon: FileJson,
+      title: 'Rapports & SARIF',
+      active: currentPath === '/report',
+    },
+    {
+      id: 'rules',
+      path: '/rules',
+      icon: Tag,
+      title: 'Règles de sécurité',
+      active: currentPath === '/rules',
+    },
+    {
+      id: 'code-viewer',
+      path: '/code-viewer',
+      icon: Code2,
+      title: 'Code Viewer (Monaco)',
+      active: currentPath === '/code-viewer',
+    },
+  ];
+
+  return (
+    <div className="w-full flex flex-col gap-1 pt-2">
+      {items.map((item) => (
+        <div key={item.id} className="group relative w-full">
+          <SidebarItem
+            icon={item.icon}
+            active={item.active}
+            onClick={() => navigate(item.path)}
+            title={item.title}
+          />
+          <div className="sidebar-tooltip">{item.title}</div>
+        </div>
+      ))}
     </div>
   );
 }

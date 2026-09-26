@@ -63,6 +63,7 @@ import hierarchicalMemoryRouter from "./server/routes/hierarchicalMemory.js";
 import conversationsRouter from "./server/routes/conversations.js";
 import listsRouter from "./server/routes/lists.js";
 import automationRouter from "./server/routes/automation.js";
+import { securityRouter } from "./server/routes/security.js";
 import { createNotebooksRouter } from "./server/routes/notebooks/index.js";
 import { createTTSRouter } from "./server/routes/tts.js";
 import { notebookManager, embeddingStore } from "./server/notebooks/index.js";
@@ -606,6 +607,7 @@ async function startServer() {
   // IMPORTANT : chaque routeur est monté sur SON préfixe dédié.
   //   - Routeurs dont les routes internes incluent déjà le nom (/profile, /workspace...) restent sur "/api"
   //   - Routeurs dont les routes internes sont génériques (/status, /, /config...) requièrent "/api/<prefix>"
+  app.use("/api/security", securityRouter);
   app.use("/api/audit", createAuditRouter(skillManager, mcpBridge));
   app.use("/api/pm2", pm2Router);
   app.use("/api/automation", automationRouter);

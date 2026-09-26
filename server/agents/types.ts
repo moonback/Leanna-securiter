@@ -4,18 +4,43 @@ import { z } from "zod";
 // Types du système d'agents multi-rôles
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/** Rôles d'agents spécialisés disponibles — ingénierie de code & rédaction de documents */
+/** Rôles d'agents spécialisés Leanna — Audit de sécurité, analyse de vulnérabilités & ingénierie */
 export const STATIC_AGENT_ROLES = [
-  // Agents de Code & Ingénierie logicielle
+  // ── Reconnaissance & Modélisation des menaces ──
+  "recon",            // cartographie du code (entry points, surfaces d'attaque)
+  "threat_modeler",   // STRIDE / MITRE ATT&CK mapping
+  "architect_sec",    // analyse d'architecture (trust boundaries)
+
+  // ── Analyse Statique (SAST) ──
+  "sast_analyzer",    // taint analysis, injection patterns
+  "crypto_auditor",   // usages cryptographiques, entropie, RNG
+  "auth_auditor",     // authn/authz, sessions, JWT, OAuth
+  "secrets_hunter",   // détection de secrets (tokens, keys, credentials)
+
+  // ── Supply Chain (SCA) ──
+  "sca_analyzer",     // CVE, EPSS, licence, typosquatting
+  "sbom_builder",     // génération SBOM CycloneDX/SPDX
+
+  // ── Infrastructure (IaC) ──
+  "iac_auditor",      // Terraform, K8s, Docker, CloudFormation
+
+  // ── Runtime (DAST) ──
+  "dast_runner",      // fuzzing API, analyse runtime
+
+  // ── Triage & Rapport ──
+  "triage",           // dédupe, priorisation, faux positifs
+  "poc_writer",       // écriture de PoC démonstratifs non-exploitables
+  "report_writer",    // rapport exécutif + technique + SARIF
+
+  // ── Rôles de support & compatibilité ──
+  "security",
   "coder",
   "refactor",
   "debugger",
   "reviewer",
   "tester",
-  "security",
   "architect",
   "vision",
-  // Agents de Rédaction & Documentation
   "writer",
   "formatter",
   "researcher",

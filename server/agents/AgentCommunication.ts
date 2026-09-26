@@ -174,8 +174,32 @@ import { STATIC_AGENT_ROLES } from "./types.js";
 import { listAgentRoles as _listAgentRoles } from "./roles.js";
 import { getAgentDefinition } from "./roles.js";
 
-/** Matrice de délégation : quels agents peuvent déléguer à qui */
-export const DELEGATION_MATRIX: Record<AgentRole, DelegationCapability[]> = {
+export const DELEGATION_MATRIX: Partial<Record<AgentRole, DelegationCapability[]>> = {
+  // ── Flotte Sécurité & Audit de Vulnérabilités ──
+  recon: [
+    { targetRole: "threat_modeler", taskTypes: ["threat-modeling", "stride-analysis"], reason: "Modélisation des menaces sur les surfaces cartographiées" },
+    { targetRole: "sast_analyzer", taskTypes: ["analyse-statique", "taint-analysis"], reason: "Analyse statique ciblée sur les points d'entrée découverts" },
+  ],
+  threat_modeler: [
+    { targetRole: "sast_analyzer", taskTypes: ["injection-sast", "taint-flow"], reason: "Vérification des chemins d'injection suspectés" },
+    { targetRole: "auth_auditor", taskTypes: ["audit-auth", "session-jwt"], reason: "Audit des frontières de confiance et contrôles d'accès" },
+  ],
+  sast_analyzer: [
+    { targetRole: "triage", taskTypes: ["triage-findings", "deduplication"], reason: "Triage et élimination des faux positifs" },
+    { targetRole: "poc_writer", taskTypes: ["redaction-poc", "demonstrateur"], reason: "Rédaction d'un PoC démonstratif non-destructif" },
+  ],
+  sca_analyzer: [
+    { targetRole: "sbom_builder", taskTypes: ["generation-sbom", "cyclonedx"], reason: "Génération de l'inventaire SBOM logiciel" },
+    { targetRole: "triage", taskTypes: ["priorisation-cve", "epss-kev"], reason: "Priorisation des dépendances vulnérables selon KEV/EPSS" },
+  ],
+  triage: [
+    { targetRole: "poc_writer", taskTypes: ["validation-poc"], reason: "Validation d'exploitabilité via PoC démonstratif" },
+    { targetRole: "report_writer", taskTypes: ["consolidation-rapport", "sarif"], reason: "Génération du rapport exécutif et export SARIF" },
+  ],
+  poc_writer: [
+    { targetRole: "report_writer", taskTypes: ["inclusion-poc-rapport"], reason: "Intégration du PoC dans la section remédiation du rapport" },
+  ],
+
   // ── Code & Ingénierie logicielle ──
   coder: [
     { targetRole: "tester", taskTypes: ["tests-unitaires", "couverture", "validation"], reason: "Écriture et passage de tests pour le code implémenté" },

@@ -32,6 +32,13 @@ const DocumentsView = lazy(() => import('./views/DocumentsView.js'));
 const NotebooksView = lazy(() => import('./views/NotebooksView.js'));
 const ObservabilityView = lazy(() => import('./views/ObservabilityView.js'));
 const AutonomyView = lazy(() => import('./views/AutonomyView.js'));
+// ── Security Console Views (Phase 1 refonte) ───────────────────────────────
+const ScanView = lazy(() => import('./views/ScanView.js'));
+const FindingsView = lazy(() => import('./views/FindingsView.js'));
+const FindingDetailView = lazy(() => import('./views/FindingDetailView.js'));
+const AttackSurfaceView = lazy(() => import('./views/AttackSurfaceView.js'));
+const ReportView = lazy(() => import('./views/ReportView.js'));
+const RulesView = lazy(() => import('./views/RulesView.js'));
 import './index.css';
 
 const configuredApiToken = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env?.VITE_Leanna_API_TOKEN?.trim();
@@ -447,13 +454,13 @@ function LoadingFallback() {
 
 function FloatingOrbWrapper() {
   const { pathname } = useLocation();
-  // Hide on IDE views — the ChatPanel replaces it there
-  if (pathname === '/' || pathname === '/ide') return null;
+  // Hide on IDE / code viewer views — the ChatPanel replaces it there
+  if (pathname === '/code-viewer' || pathname === '/ide') return null;
   return <FloatingOrb />;
 }
 function NavSidebar() {
   const { pathname } = useLocation();
-  const isIde = pathname === '/' || pathname === '/ide';
+  const isIde = pathname === '/code-viewer' || pathname === '/ide';
   const isSettings = pathname === '/settings';
 
   // Don't show on IDE (it has its own UnifiedSidebar in context='ide')
@@ -483,8 +490,17 @@ function AnimatedRoutes() {
   return (
     <AnimatePresence mode="wait">
       <Routes location={location} key={location.pathname}>
-        <Route path="/"              element={<Navigate to="/ide" replace />} />
-        <Route path="/ide"           element={wrap(<IdeView />)} />
+        {/* ── Security Console (primary routes) ─────────────────────────── */}
+        <Route path="/"              element={<Navigate to="/scan" replace />} />
+        <Route path="/scan"          element={wrap(<ScanView />)} />
+        <Route path="/findings"      element={wrap(<FindingsView />)} />
+        <Route path="/findings/:id"  element={wrap(<FindingDetailView />)} />
+        <Route path="/surface"       element={wrap(<AttackSurfaceView />)} />
+        <Route path="/report"        element={wrap(<ReportView />)} />
+        <Route path="/rules"         element={wrap(<RulesView />)} />
+        {/* ── Legacy / secondary routes (conservés) ─────────────────────── */}
+        <Route path="/code-viewer"   element={wrap(<IdeView />)} />
+        <Route path="/ide"           element={<Navigate to="/code-viewer" replace />} />
         <Route path="/memories"      element={wrap(<MemoriesView />)} />
         <Route path="/history"       element={wrap(<HistoryView />)} />
         <Route path="/settings"      element={wrap(<SettingsView />)} />

@@ -495,7 +495,7 @@ const visionAgent: AgentDefinition = {
 function buildAgentPrompt(role: AgentRole): string {
   const base = BASE_SYSTEM_PROMPT;
 
-  const specifics: Record<AgentRole, string> = {
+  const specifics: Partial<Record<AgentRole, string>> = {
     // 1. Prompts Code & Dév
     coder: `
 ${SECTION_IDENTITY("Développeur", "expert en implémentation logicielle, maîtrise du code propre, des types stricts et des architectures modernes")}
@@ -1157,7 +1157,48 @@ ${SECTION_OUTPUT_FORMAT}
 `,
   };
 
-  return `${base}\n\n${specifics[role]}`;
+  const specificPrompt = specifics[role] || `
+${SECTION_IDENTITY(role, "expert spécialisé en sécurité informatique, audit de vulnérabilités et conformité")}
+
+${SECTION_MISSION([
+  "Examiner le code source, les dépendances et l'infrastructure pour identifier les failles.",
+  "Fournir une analyse reproductible avec preuve technique (CWE / OWASP / CVSS).",
+  "Proposer des mesures de remédiation concrètes sans modifier directement le code.",
+])}
+
+${SECTION_RULES([
+  "Mode lecture seule strict : aucune écriture ou modification de code permise.",
+  "Preuve et déterminisme requis pour chaque finding.",
+])}
+
+${SECTION_OUTPUT_FORMAT}
+`;
+
+  return `${base}\n\n${specificPrompt}`;
+}
+
+function createSecurityRoleDefinition(role: string, name: string, description: string): AgentDefinition {
+  return {
+    role,
+    name,
+    description,
+    capabilities: [
+      "read_project_file",
+      "list_project_files",
+      "search_in_files",
+      "analyze_project_file",
+      "read_file_outline",
+      "verify_lint",
+      "verify_typecheck",
+      "knowledge_build_context",
+      "knowledge_memory_search",
+      "knowledge_memory_add",
+      "reasoning_think",
+    ],
+    systemPrompt: buildAgentPrompt(role as AgentRole),
+    maxConcurrency: 2,
+    defaultTimeoutMs: 60_000,
+  };
 }
 
 // ─── Registry ──────────────────────────────────────────────────────────────────
@@ -1167,7 +1208,23 @@ ${SECTION_OUTPUT_FORMAT}
  * Ces agents sont toujours disponibles et ne peuvent pas être supprimés.
  */
 export const STATIC_AGENT_REGISTRY: Record<string, AgentDefinition> = {
-  // Code & Ingénierie
+  // ── Flotte Sécurité Spécialisée (Phase 2) ──
+  recon: createSecurityRoleDefinition("recon", "Agent Reconnaissance", "Cartographie de code, découverte des points d'entrée et surfaces d'attaque."),
+  threat_modeler: createSecurityRoleDefinition("threat_modeler", "Agent Modélisateur de Menaces", "Modélisation des menaces, analyse STRIDE et mapping MITRE ATT&CK."),
+  architect_sec: createSecurityRoleDefinition("architect_sec", "Agent Architecte Sécurité", "Analyse des frontières de confiance et de l'architecture sécurisée."),
+  sast_analyzer: createSecurityRoleDefinition("sast_analyzer", "Agent Analyse Statique (SAST)", "Analyse statique de code, détection d'injections et flux de taint."),
+  crypto_auditor: createSecurityRoleDefinition("crypto_auditor", "Agent Auditeur Cryptographique", "Audit des usages cryptographiques, entropie, RNG et algorithmes obsolètes."),
+  auth_auditor: createSecurityRoleDefinition("auth_auditor", "Agent Auditeur AuthN/AuthZ", "Audit des contrôles d'accès, sessions, tokens JWT, OAuth et gestion des identités."),
+  secrets_hunter: createSecurityRoleDefinition("secrets_hunter", "Agent Chasseur de Secrets", "Détection de secrets, jetons d'accès, mots de passe et clés privées codés en dur."),
+  sca_analyzer: createSecurityRoleDefinition("sca_analyzer", "Agent Supply Chain (SCA)", "Audit des vulnérabilités dans les dépendances open source et bibliothèques tierces."),
+  sbom_builder: createSecurityRoleDefinition("sbom_builder", "Agent Constructeur SBOM", "Génération d'inventaires logiciels CycloneDX et SPDX standardisés."),
+  iac_auditor: createSecurityRoleDefinition("iac_auditor", "Agent Auditeur IaC", "Audit de sécurité pour Dockerfile, Kubernetes, Terraform et CloudFormation."),
+  dast_runner: createSecurityRoleDefinition("dast_runner", "Agent Runner DAST", "Fuzzing d'API et analyse dynamique des endpoints HTTP."),
+  triage: createSecurityRoleDefinition("triage", "Agent Triage & Priorisation", "Déduplication des résultats, filtrage des faux positifs et priorisation des vulnérabilités."),
+  poc_writer: createSecurityRoleDefinition("poc_writer", "Agent Rédacteur PoC", "Conception de preuves de concept (PoC) démonstratives et non-destructives."),
+  report_writer: createSecurityRoleDefinition("report_writer", "Agent Rédacteur de Rapports", "Génération de synthèses exécutives, fiches techniques et exports SARIF."),
+
+  // ── Rôles de Support & Compatibilité ──
   coder: coderAgent,
   refactor: refactorAgent,
   debugger: debuggerAgent,
@@ -1176,7 +1233,6 @@ export const STATIC_AGENT_REGISTRY: Record<string, AgentDefinition> = {
   security: securityAgent,
   architect: architectAgent,
   vision: visionAgent,
-  // Rédaction & Documents
   writer: writerAgent,
   formatter: formatterAgent,
   researcher: researcherAgent,
