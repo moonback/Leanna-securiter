@@ -171,10 +171,10 @@ function extractCveIds(vuln: OsvVulnerability): string[] {
  * Extrait la version fixée la plus récente depuis les plages OSV affectées.
  */
 function extractFixedVersion(vuln: OsvVulnerability, pkgName: string): string {
-  for (const affected of vuln.affected) {
-    if (affected.package.name.toLowerCase() === pkgName.toLowerCase()) {
+  for (const affected of vuln.affected ?? []) {
+    if (affected?.package?.name?.toLowerCase() === pkgName.toLowerCase()) {
       for (const range of affected.ranges ?? []) {
-        for (const event of range.events) {
+        for (const event of range.events ?? []) {
           if (event.fixed) return event.fixed;
         }
       }
