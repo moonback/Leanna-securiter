@@ -16,6 +16,7 @@ function scanResult(c: SeverityCounts, scanId = 'scan', endTime = new Date().toI
     scanId, targetPath: '.', profile: 'standard', triggerType: 'api', status: 'completed',
     startTime: '', endTime, durationMs: 1, filesScanned: 0, filesSkipped: 0,
     findingsCount: c, findings: [], sbomComponents: [], scaOnlineEnrichment: false, cacheSize: 0,
+    report: null,
   };
 }
 

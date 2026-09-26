@@ -91,6 +91,8 @@ securityRouter.post("/scan", async (req, res) => {
       findingsCount:      result.findingsCount,
       scaOnlineEnrichment: result.scaOnlineEnrichment,
       cacheSize:          result.cacheSize,
+      // Chemins (relatifs à la sandbox) des rapports écrits, ou null.
+      report:             result.report,
       // Include findings inline for small scans; clients can also fetch /findings
       findings:           result.findings,
       sbomCount:          result.sbomComponents.length,

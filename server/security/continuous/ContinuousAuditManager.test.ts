@@ -28,6 +28,7 @@ function fakeResult(): ScanExecutionResult {
     sbomComponents: [],
     scaOnlineEnrichment: false,
     cacheSize: 0,
+    report: null,
   };
 }
 

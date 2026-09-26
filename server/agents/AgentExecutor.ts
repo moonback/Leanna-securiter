@@ -117,6 +117,12 @@ export const EXECUTABLE_AGENT_TOOLS = new Set([
   "automation_screenshot",
   "automation_analyze_screenshot",
   "automation_scroll",
+  // Audit sécurité (skill security) — outils non mutatifs de l'agent `security`
+  // et de la flotte d'audit. Réels et testés (server/skills/security/index.ts) ;
+  // référencés par les capabilities de l'agent, donc requis dans l'allowlist.
+  "security_audit",
+  "security_sast",
+  "security_sca",
   "reasoning_think",
   "agent_execute",
 ]);

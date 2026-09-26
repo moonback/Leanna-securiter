@@ -26,6 +26,7 @@ import crypto from 'crypto';
 import type { Finding, FindingStatus } from '../findings/Finding.js';
 import { buildSarifReport } from '../reporting/SarifBuilder.js';
 import { buildCycloneDxSbom, type SbomComponent } from '../reporting/SbomBuilder.js';
+import { writeSecurityReportToSandbox } from '../reporting/ReportWriter.js';
 
 import { ScanPolicy, type ScanPolicyConfig, type ScanProfileType } from './ScanPolicy.js';
 import { ScanTriggerEngine, type TriggerType, type ScanTriggerEvent } from './ScanTriggerEngine.js';
@@ -76,6 +77,14 @@ export interface ScanExecutionResult {
   scaOnlineEnrichment: boolean;
   /** Number of files tracked in the incremental hash cache */
   cacheSize: number;
+  /**
+   * Rapports écrits dans la sandbox (chemins relatifs à la racine sandbox).
+   * `null` si la sandbox n'était pas prête au moment du scan.
+   */
+  report: {
+    markdownPath: string;
+    sarifPath: string;
+  } | null;
 }
 
 export interface AttackSurfaceNode {
@@ -347,7 +356,43 @@ export class SecurityOrchestrator {
       sbomComponents: this.sbomStore,
       scaOnlineEnrichment,
       cacheSize: this.triggerEngine.getCacheSize(),
+      report: null,
     };
+
+    // ------------------------------------------------------------------
+    // 7. Écriture des livrables de rapport DANS LA SANDBOX
+    //    (rapport.md + rapport.sarif.json). Non bloquant : un échec
+    //    d'écriture (sandbox non prête, etc.) ne fait pas échouer le scan.
+    // ------------------------------------------------------------------
+    const reportResult = writeSecurityReportToSandbox(
+      {
+        scanId,
+        targetPath: targetDir,
+        profile: cfg.profile,
+        status: result.status,
+        startTime: result.startTime,
+        endTime: result.endTime,
+        durationMs,
+        filesScanned: filesToScan.length,
+        filesSkipped,
+        findings: uniqueFindings,
+        findingsCount: counts,
+        blockingReason,
+      },
+      targetDir,
+    );
+
+    if (reportResult.written && reportResult.report) {
+      result.report = reportResult.report;
+      console.info(
+        `[SecurityOrchestrator][${scanId}] 📄 Rapport écrit dans la sandbox → ` +
+        `${reportResult.report.markdownPath}, ${reportResult.report.sarifPath}`
+      );
+    } else {
+      console.warn(
+        `[SecurityOrchestrator][${scanId}] Rapport non écrit : ${reportResult.reason}`
+      );
+    }
 
     this.lastScanResult = result;
 
