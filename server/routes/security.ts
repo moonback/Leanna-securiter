@@ -197,7 +197,7 @@ securityRouter.post("/report", (req, res) => {
  * GET /api/security/rules
  * Liste tous les packs de règles disponibles et leurs métadonnées.
  */
-securityRouter.get("/rules", (req, res) => {
+securityRouter.get("/rules", (_req, res) => {
   try {
     const packs = ruleEngine.listPacks();
     const total = ruleEngine.getAllEnabledRules().length;
@@ -218,7 +218,7 @@ securityRouter.get("/rules/:packId", (req, res) => {
     // Vérifier si le pack existe
     const packs = ruleEngine.listPacks();
     const exists = packs.some((p) => p.id === packId);
-    if (!exists) return res.status(404).json({ error: "Pack introuvable" });
+    if (!exists) { res.status(404).json({ error: "Pack introuvable" }); return; }
   }
   res.json({ success: true, packId, rules });
 });
@@ -231,9 +231,10 @@ securityRouter.patch("/rules/:packId/toggle", (req, res) => {
   const { packId } = req.params;
   const { enabled } = req.body ?? {};
   if (typeof enabled !== "boolean") {
-    return res.status(400).json({ error: "Champ 'enabled' (boolean) requis" });
+    res.status(400).json({ error: "Champ 'enabled' (boolean) requis" });
+    return;
   }
   const ok = ruleEngine.setPackEnabled(packId, enabled);
-  if (!ok) return res.status(404).json({ error: "Pack introuvable" });
+  if (!ok) { res.status(404).json({ error: "Pack introuvable" }); return; }
   res.json({ success: true, packId, enabled });
 });

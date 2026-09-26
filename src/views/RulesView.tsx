@@ -21,93 +21,55 @@ interface RulePack {
   severity: 'critical' | 'high' | 'medium' | 'low' | 'mixed';
 }
 
-// ─── Built-in rule packs ───────────────────────────────────────────────────────
+// Backend RulePackMeta shape from /api/security/rules
+interface BackendPackMeta {
+  id: string;
+  name: string;
+  description: string;
+  version: string;
+  author: string;
+  ruleCount: number;
+  enabled: boolean;
+}
 
-const DEFAULT_PACKS: RulePack[] = [
-  {
-    id: 'owasp-top10-2021',
-    name: 'OWASP Top 10 (2021)',
-    description: 'Règles couvrant les 10 principales vulnérabilités OWASP : injection, XSS, SSRF, auth brisée, etc.',
-    category: 'owasp',
-    rulesCount: 47,
-    enabled: true,
-    version: '2.1.0',
-    author: 'OWASP Foundation',
-    tags: ['injection', 'xss', 'ssrf', 'auth', 'a01-a10'],
+// ─── Category mapping (backend pack IDs → frontend categories) ─────────────
+
+function inferCategory(id: string): RulePack['category'] {
+  if (id.startsWith('owasp')) return 'owasp';
+  if (id.startsWith('cwe')) return 'cwe';
+  if (id.startsWith('cisa')) return 'cisa';
+  return 'custom';
+}
+
+function inferTags(id: string): string[] {
+  const map: Record<string, string[]> = {
+    'owasp-top10-2021': ['injection', 'xss', 'ssrf', 'auth', 'a01-a10'],
+    'cwe-top25': ['cwe-79', 'cwe-89', 'cwe-287', 'cwe-502', 'cwe-918'],
+    'cisa-kev': ['kev', 'log4shell', 'spring4shell', 'actively-exploited'],
+  };
+  return map[id] ?? [];
+}
+
+function backendToUiPack(meta: BackendPackMeta): RulePack {
+  return {
+    id: meta.id,
+    name: meta.name,
+    description: meta.description,
+    category: inferCategory(meta.id),
+    rulesCount: meta.ruleCount,
+    enabled: meta.enabled,
+    version: meta.version,
+    author: meta.author,
+    tags: inferTags(meta.id),
     severity: 'mixed',
-  },
-  {
-    id: 'cwe-top25-2023',
-    name: 'CWE Top 25 (2023)',
-    description: 'Les 25 failles logicielles les plus dangereuses selon MITRE — focus sur les CWE les plus exploitées.',
-    category: 'cwe',
-    rulesCount: 25,
-    enabled: true,
-    version: '1.3.0',
-    author: 'MITRE Corporation',
-    tags: ['cwe-79', 'cwe-89', 'cwe-287', 'cwe-502', 'cwe-918'],
-    severity: 'critical',
-  },
-  {
-    id: 'cisa-kev-patterns',
-    name: 'CISA KEV Patterns',
-    description: 'Patterns de détection basés sur les vulnérabilités activement exploitées (CISA Known Exploited Vulnerabilities).',
-    category: 'cisa',
-    rulesCount: 18,
-    enabled: true,
-    version: '1.0.2',
-    author: 'CISA',
-    tags: ['kev', 'actively-exploited', 'ransomware'],
-    severity: 'critical',
-  },
-  {
-    id: 'secrets-detection',
-    name: 'Détection de secrets',
-    description: 'Patterns regex d\'entropie pour détecter les tokens, clés API, credentials codés en dur (AWS, GCP, GitHub, JWT…).',
-    category: 'custom',
-    rulesCount: 84,
-    enabled: true,
-    version: '3.0.1',
-    author: 'Leanna Security',
-    tags: ['aws', 'gcp', 'github', 'jwt', 'oauth', 'entropy'],
-    severity: 'high',
-  },
-  {
-    id: 'nodejs-security',
-    name: 'Node.js Security',
-    description: 'Règles spécifiques à l\'écosystème Node.js : eval(), command injection, path traversal, prototype pollution.',
-    category: 'custom',
-    rulesCount: 32,
-    enabled: true,
-    version: '2.0.0',
-    author: 'Leanna Security',
-    tags: ['nodejs', 'eval', 'prototype-pollution', 'path-traversal'],
-    severity: 'high',
-  },
-  {
-    id: 'react-security',
-    name: 'React / Frontend Security',
-    description: 'Règles pour les applications React : dangerouslySetInnerHTML, XSS via props, open redirects, postMessage.',
-    category: 'custom',
-    rulesCount: 19,
-    enabled: false,
-    version: '1.1.0',
-    author: 'Leanna Security',
-    tags: ['react', 'xss', 'dangerouslySetInnerHTML', 'csrf'],
-    severity: 'medium',
-  },
-  {
-    id: 'iac-security',
-    name: 'Infrastructure as Code',
-    description: 'Dockerfile, Kubernetes, Terraform, CloudFormation — détection de misconfigurations de sécurité.',
-    category: 'custom',
-    rulesCount: 56,
-    enabled: false,
-    version: '1.4.0',
-    author: 'Leanna Security',
-    tags: ['docker', 'kubernetes', 'terraform', 'aws-cloudformation'],
-    severity: 'mixed',
-  },
+  };
+}
+
+// Fallback static packs shown while loading or if API is unavailable
+const FALLBACK_PACKS: RulePack[] = [
+  { id: 'owasp-top10-2021', name: 'OWASP Top 10 (2021)', description: 'Règles OWASP Top 10 2021.', category: 'owasp', rulesCount: 8, enabled: true, version: '2021.0.1', author: 'Leanna Security', tags: ['injection', 'xss', 'ssrf', 'auth'], severity: 'mixed' },
+  { id: 'cwe-top25', name: 'CWE Top 25 (2023)', description: 'Les 25 faiblesses logicielles CWE les plus dangereuses.', category: 'cwe', rulesCount: 15, enabled: true, version: '2023.0.1', author: 'Leanna Security', tags: ['cwe-79', 'cwe-89', 'cwe-502'], severity: 'critical' },
+  { id: 'cisa-kev', name: 'CISA KEV', description: 'Patterns CISA Known Exploited Vulnerabilities.', category: 'cisa', rulesCount: 7, enabled: true, version: '2024.0.1', author: 'Leanna Security', tags: ['kev', 'log4shell', 'actively-exploited'], severity: 'critical' },
 ];
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
@@ -264,15 +226,50 @@ function RulePackCard({
 // ─── Main View ────────────────────────────────────────────────────────────────
 
 export default function RulesView() {
-  const [packs, setPacks] = useState<RulePack[]>(DEFAULT_PACKS);
+  const [packs, setPacks] = useState<RulePack[]>(FALLBACK_PACKS);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [expandedPack, setExpandedPack] = useState<string | null>(null);
   const [showImport, setShowImport] = useState(false);
 
-  const togglePack = useCallback((id: string) => {
-    setPacks(prev => prev.map(p => p.id === id ? { ...p, enabled: !p.enabled } : p));
+  const loadPacks = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/security/rules');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json() as { success: boolean; packs: BackendPackMeta[] };
+      if (data.success && data.packs.length > 0) {
+        setPacks(data.packs.map(backendToUiPack));
+      }
+    } catch {
+      setError('Impossible de charger les règles depuis le serveur. Affichage des règles par défaut.');
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => { loadPacks(); }, [loadPacks]);
+
+  const togglePack = useCallback(async (id: string) => {
+    const pack = packs.find(p => p.id === id);
+    if (!pack) return;
+    const newEnabled = !pack.enabled;
+    // Optimistic update
+    setPacks(prev => prev.map(p => p.id === id ? { ...p, enabled: newEnabled } : p));
+    try {
+      await fetch(`/api/security/rules/${encodeURIComponent(id)}/toggle`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: newEnabled }),
+      });
+    } catch {
+      // Revert on error
+      setPacks(prev => prev.map(p => p.id === id ? { ...p, enabled: !newEnabled } : p));
+    }
+  }, [packs]);
 
   const deletePack = useCallback((id: string) => {
     setPacks(prev => prev.filter(p => p.id !== id));
@@ -310,12 +307,25 @@ export default function RulesView() {
             <h1 className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>
               Packs de règles
             </h1>
-            <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-              {enabledCount}/{packs.length} packs actifs · {totalRules} règles au total
+            <p className="text-[11px] flex items-center gap-1.5" style={{ color: 'var(--text-muted)' }}>
+              {loading
+                ? <><Loader2 size={11} className="animate-spin" /> Chargement…</>
+                : <>{enabledCount}/{packs.length} packs actifs · {totalRules} règles au total</>
+              }
             </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <motion.button
+            whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+            onClick={loadPacks}
+            disabled={loading}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-medium transition-all"
+            style={{ borderColor: 'var(--border-base)', backgroundColor: 'var(--bg-panel)', color: 'var(--text-secondary)', opacity: loading ? 0.6 : 1 }}
+          >
+            {loading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+            Rafraîchir
+          </motion.button>
           <motion.button
             whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
             onClick={() => setShowImport(v => !v)}
@@ -343,6 +353,30 @@ export default function RulesView() {
           </motion.button>
         </div>
       </div>
+
+      {/* Error banner */}
+      <AnimatePresence>
+        {error && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="overflow-hidden border-b flex-shrink-0"
+            style={{ borderColor: '#ef444430', backgroundColor: '#ef444410' }}
+          >
+            <div className="px-4 py-2.5 flex items-center gap-2">
+              <AlertCircle size={13} style={{ color: '#ef4444' }} />
+              <p className="text-[11px] flex-1" style={{ color: '#ef4444' }}>{error}</p>
+              <motion.button
+                whileTap={{ scale: 0.95 }}
+                onClick={() => setError(null)}
+                className="text-[10px] underline"
+                style={{ color: '#ef4444' }}
+              >Ignorer</motion.button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Import panel */}
       <AnimatePresence>
