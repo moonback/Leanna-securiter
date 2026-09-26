@@ -152,7 +152,9 @@ describe("Leanna Security Engine", () => {
 
   it("Should have all specialized security agent roles registered as read-only", async () => {
     const { getAgentDefinition, roleCanWriteFiles } = await import("../agents/roles.js");
-    const securityRoles = [
+
+    // Rôles d'analyse : lecture seule STRICTE, aucune capacité d'écriture.
+    const readOnlyRoles = [
       "recon",
       "threat_modeler",
       "architect_sec",
@@ -163,16 +165,30 @@ describe("Leanna Security Engine", () => {
       "sca_analyzer",
       "sbom_builder",
       "iac_auditor",
+      "dast_runner",
       "triage",
-      "poc_writer",
-      "report_writer",
     ];
 
-    for (const role of securityRoles) {
+    // Exceptions d'écriture encadrées : ces rôles produisent des artefacts
+    // (rapports / PoC) confinés à la sandbox — cf. SECURITY_WRITE_EXCEPTIONS.
+    const writeExceptionRoles = ["report_writer", "poc_writer"];
+
+    for (const role of readOnlyRoles) {
       const def = getAgentDefinition(role);
       assert.ok(def, `Role ${role} should be defined`);
       assert.equal(def.role, role);
       assert.equal(roleCanWriteFiles(role), false, `Role ${role} must be strictly read-only`);
+    }
+
+    for (const role of writeExceptionRoles) {
+      const def = getAgentDefinition(role);
+      assert.ok(def, `Role ${role} should be defined`);
+      assert.equal(def.role, role);
+      assert.equal(
+        roleCanWriteFiles(role),
+        true,
+        `Role ${role} must be allowed to write artifacts (report/PoC exception)`,
+      );
     }
   });
 });

@@ -30,6 +30,7 @@ Leanna réunit une application frontend React 19 / Vite, un serveur Express séc
 - [Installation & Lancement](#installation--lancement)
 - [Tests et Qualité](#tests-et-qualité)
 - [Structure du Dépôt](#structure-du-dépôt)
+- [Roadmap](#roadmap)
 - [Licence](#licence)
 
 ---
@@ -111,7 +112,15 @@ recon ➔ threat_modeler ➔ sast_analyzer ➔ triage ➔ poc_writer ➔ report_
 * **`poc_writer`** : Rédaction de preuves de concept (PoC) **démonstratives et non-destructives**.
 * **`report_writer`** : Synthèse exécutive, fiches techniques et exports normalisés.
 
-> 🔒 **Garantie Lecture Seule :** Tous les agents de sécurité ont la propriété `roleCanWriteFiles === false`. Ils ne disposent d'aucun outil de modification de code (`write_project_file`, `modify_project_file`, `patch_project_file`), protégeant rigoureusement le code analysé.
+Chaque rôle dispose désormais d'un **prompt système dédié** ([`roles.ts`](server/agents/roles.ts)) construit par `buildSecurityAgentPrompt`, appliquant une doctrine partagée (`SECURITY_DOCTRINE`), un contrat de finding JSON strict (`SECURITY_FINDING_CONTRACT` : `id` stable, CWE, vecteur CVSS, preuve `file.ts:42`, remédiation) et un format de sortie normalisé. La matrice de délégation ([`AgentCommunication.ts`](server/agents/AgentCommunication.ts)) chaîne les rôles de bout en bout (`recon → … → report_writer`).
+
+> 🔒 **Lecture seule stricte par défaut.** Les agents d'analyse (recon, threat_modeler, sast_analyzer, crypto_auditor, auth_auditor, secrets_hunter, sca_analyzer, iac_auditor, dast_runner, triage) n'ont **aucun** outil de modification (`write_project_file`, `modify_project_file`, `patch_project_file`) et protègent rigoureusement le code analysé.
+>
+> ✍️ **Deux exceptions d'écriture strictement encadrées**, produisant uniquement des artefacts (jamais du code source audité) :
+> - **`report_writer`** écrit les livrables `rapport.md` et `rapport.sarif.json` ;
+> - **`poc_writer`** écrit ses PoC dans le dossier `poc/` de la sandbox.
+>
+> Ces exceptions sont déclarées dans `SECURITY_WRITE_EXCEPTIONS` et confinées à la sandbox via le SandboxGuard.
 
 ---
 
@@ -164,6 +173,19 @@ Conformément à la directive d'audit offline sécurisé, Leanna propose un **mo
   - **`🛡️ Sandbox (Recommandé)`** : Aucune interaction avec vos fichiers de développement.
   - **`📁 Workspace`** : Analyse directe du dossier racine.
 
+### Génération automatique des rapports dans la sandbox
+
+À l'issue de **chaque scan**, le [`SecurityOrchestrator`](server/security/orchestrator/SecurityOrchestrator.ts) écrit automatiquement, via [`ReportWriter.ts`](server/security/reporting/ReportWriter.ts), deux livrables dans `.Leanna/sandbox/security-reports/` :
+
+- **`rapport.md`** — rapport lisible (synthèse exécutive, tableau de bord par sévérité et par scanner, top risques, fiche par finding avec preuve/impact/remédiation) généré par [`MarkdownReportBuilder.ts`](server/security/reporting/MarkdownReportBuilder.ts). Les valeurs sensibles (secrets) y sont **masquées** (préfixe + longueur, ex. `sk-live-…(48 chars)`).
+- **`rapport.sarif.json`** — export SARIF 2.1.0 pour intégration CI.
+
+Toute écriture transite par le SandboxGuard (`assertSandboxReady` : chemin relatif, sous la racine sandbox, sans lien symbolique, sandbox `READY`). L'opération est **non bloquante** : si la sandbox n'est pas prête, le scan aboutit quand même et la raison est journalisée. Les chemins produits sont exposés dans le champ `report` de la réponse `/api/security/scan`.
+
+### Gate bloquant : réservé au CI/CD
+
+Le seuil bloquant (`blockingSeverity`) n'est appliqué **que** pour les déclencheurs de garde CI/CD (`git_commit`, `pre_push`) : un scan `blocked` empêche alors le commit ou le push. Les scans **à la demande** (`api`, `cron`, `file_change`) sont informatifs et ne sont **jamais** marqués `blocked`, même en présence de findings au-dessus du seuil — évitant qu'une simple CVE `medium` d'une dépendance transitive ne fasse échouer un audit manuel.
+
 ---
 
 ## Standards & Conformité (SARIF, SBOM, CVSS/EPSS)
@@ -189,7 +211,7 @@ Le routeur de sécurité est monté sur `/api/security` dans [`server.ts`](serve
 
 | Méthode | Endpoint | Rôle |
 |---|---|---|
-| `POST` | `/api/security/scan` | Déclenche un audit sur le projet (ou sandbox) avec les scanners choisis. |
+| `POST` | `/api/security/scan` | Déclenche un audit sur le projet (ou sandbox). La réponse inclut le champ `report` (`{ markdownPath, sarifPath }` relatifs à la sandbox, ou `null`). |
 | `GET` | `/api/security/scan/status` | Retourne l'état du scan en cours ou le résumé du dernier scan. |
 | `GET` | `/api/security/findings` | Liste les vulnérabilités (avec filtres optionnels `severity`, `scanner`, `status`). |
 | `GET` | `/api/security/findings/:id` | Récupère la fiche détaillée d'un finding avec son Taint Flow complet. |
@@ -291,8 +313,9 @@ leanna/
 │   ├── security/                 # ⭐ Cœur du Security OS
 │   │   ├── findings/             # Modèles normalisés, Fingerprint SHA-256, CVSS/EPSS
 │   │   ├── scanners/             # TaintAnalyzer (SAST), DependencyScanner (SCA), Secrets, IaC
-│   │   ├── reporting/            # SarifBuilder (2.1.0), SbomBuilder (CycloneDX 1.5)
-│   │   ├── orchestrator/         # SecurityOrchestrator central
+│   │   ├── reporting/            # SarifBuilder (2.1.0), SbomBuilder (CycloneDX 1.5),
+│   │   │                         # MarkdownReportBuilder, ReportWriter (écriture sandbox)
+│   │   ├── orchestrator/         # SecurityOrchestrator, ScanPolicy, ScanTriggerEngine
 │   │   └── security.test.ts      # Tests unitaires du moteur de sécurité
 │   ├── agents/                   # Flotte d'agents spécialisés (rôles read-only, AgentBrain)
 │   ├── knowledge/                # ASTParser, ASTCallGraph, RelationExtractor
@@ -310,6 +333,17 @@ leanna/
 ├── package.json
 └── README.md
 ```
+
+---
+
+## Roadmap
+
+La trajectoire produit détaillée (jalons, statut, priorités) est maintenue dans [`ROADMAP.md`](ROADMAP.md).
+
+**En bref :**
+- ✅ **Livré** — Moteurs SAST/SCA/Secrets/IaC, orchestrateur + file d'attente, flotte d'agents spécialisés à prompts dédiés, exports SARIF/SBOM, génération auto de rapport dans la sandbox, gate CI/CD réservé aux déclencheurs commit/push.
+- 🚧 **En cours** — DAST (fuzzing d'API opt-in), packs de règles configurables, enrichissement EPSS/KEV hors-ligne.
+- 🔭 **Prévu** — SBOM SPDX, intégration GitHub Code Scanning native, triage assisté par IA, historique de posture et tendances.
 
 ---
 

@@ -326,11 +326,18 @@ export class SecurityOrchestrator {
 
     // ------------------------------------------------------------------
     // 6. Blocking gate evaluation
+    //
+    // Le gate bloquant est un mécanisme CI/CD : il ne doit s'appliquer QUE
+    // pour les déclencheurs qui gardent une PR / un push (git_commit, pre_push).
+    // Un audit à la demande (api, cron, file_change) rapporte les findings sans
+    // marquer le scan 'blocked' — sinon la moindre CVE 'medium' d'une dépendance
+    // transitive ferait échouer tout scan manuel, ce qui n'a pas de sens.
     // ------------------------------------------------------------------
+    const gateEnforced = this._isBlockingTrigger(trigger.type);
     const blockingFindings = uniqueFindings.filter(
       (f) => f.status === 'open' && policy.isBlocking(f.severity)
     );
-    const blocked       = blockingFindings.length > 0;
+    const blocked       = gateEnforced && blockingFindings.length > 0;
     const blockingReason = blocked
       ? `${blockingFindings.length} finding(s) at or above '${cfg.blockingSeverity}' severity`
       : undefined;
@@ -607,6 +614,17 @@ export class SecurityOrchestrator {
       default:
         return 10;
     }
+  }
+
+  /**
+   * Indique si un déclencheur doit faire respecter le gate bloquant.
+   *
+   * Seuls les déclencheurs CI/CD (garde de commit / push) bloquent : un scan
+   * `blocked` empêche l'action git. Les scans à la demande (api, cron,
+   * file_change) sont informatifs et ne doivent jamais être marqués `blocked`.
+   */
+  private _isBlockingTrigger(type: TriggerType): boolean {
+    return type === 'git_commit' || type === 'pre_push';
   }
 }
 
