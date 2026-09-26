@@ -107,7 +107,7 @@ Principes directeurs :
 | Vues Scan / Findings / Détail / Surface / Report / Rules | ✅ | Console React 19 complète. |
 | Code Viewer Monaco lecture seule | ✅ | Inspection sans risque de modification. |
 | Graphe de surface d'attaque (risque dérivé des findings) | ✅ | `getAttackSurface` : nœuds/arêtes, score par pondération de sévérité. |
-| Packs de règles configurables (OWASP/CWE/KEV/IaC) | 🚧 | `RulesView` : activation/désactivation par pack. |
+| **Packs de règles configurables (OWASP/CWE/KEV/IaC)** | ✅ | `RulesView` + `RuleEngine` : 4 packs (OWASP Top 10, CWE Top 25, CISA KEV, IaC Baseline) ; activation/désactivation persistée (`.Leanna/rule-packs.json`) et **effective au scan** — les findings d'un pack désactivé sont filtrés avant ingestion (fail-open pour les familles non couvertes). |
 | Visualisation du rapport sandbox dans l'UI | 🔭 | Rendu de `rapport.md` directement dans `/report`. |
 | Diff de posture entre deux scans | 🔭 | Comparaison findings ajoutés/résolus. |
 
@@ -115,6 +115,7 @@ Principes directeurs :
 
 ## 9. Corrections récentes
 
+- **Packs de règles rendus effectifs (OWASP/CWE/KEV/IaC)** — la capacité était une coquille d'UI : `RulesView` affichait des toggles et le `RuleEngine` gérait bien `setPackEnabled`, mais (1) l'état n'était pas persisté et repartait à zéro au redémarrage, (2) aucun scanner ne consultait l'état des packs — désactiver OWASP ne changeait rien aux findings, et (3) le pack IaC annoncé dans le titre n'existait pas. Désormais : l'état activé/désactivé est persisté dans `.Leanna/rule-packs.json` (rechargé au démarrage) ; l'orchestrateur filtre les `rawFindings` avant ingestion via `ruleEngine.filterFindings`, en rattachant chaque finding à ses packs par `ruleId`/CWE/OWASP (un finding est écarté seulement si tous les packs qui le revendiquent sont désactivés, fail-open sinon) ; et un pack `iac-baseline` réel (Docker root, tag latest, pod privilégié, ingress ouvert) est enregistré et mappé sur les `ruleId` émis par `IacScanner`.
 - **DAST livrée (opt-in, non destructive)** — la capacité restait une coquille : la politique (`canRunDast`, classification de cible) et le rôle `dast_runner` existaient, mais aucun scanner ne tournait et le flag `dast: true` du profil `full` était inerte. Le `DastScanner` réel est désormais branché dans l'orchestrateur (étape 4bis), derrière une triple porte (scanner actif + opt-in explicite + `canRunDast === allow`). Il n'émet que des requêtes d'observation inoffensives (GET/HEAD/OPTIONS, redirections manuelles, timeouts et plafond de requêtes) et corrobore dynamiquement les findings SAST exposés en HTTP, les promouvant de `open` à `confirmed` sans jamais les exploiter. Cible acceptée en automatique : localhost ; staging/inconnu → approbation ; production → refus.
 - **Gate bloquant abusif** — un scan `full` à la demande bloquait dès qu'une CVE `medium` existait dans les dépendances transitives (`BLOCKED | 24 findings (0C 0H)`). Le gate est désormais réservé aux déclencheurs CI/CD (`git_commit` / `pre_push`) ; les scans manuels restent `completed` et informatifs.
 - **Rapports non persistés** — l'orchestrateur générait SARIF/SBOM en mémoire sans jamais les écrire. Les rapports sont maintenant écrits automatiquement dans `.Leanna/sandbox/security-reports/`.
@@ -123,4 +124,4 @@ Principes directeurs :
 
 ---
 
-_Dernière mise à jour : 26 septembre 2026 — DAST opt-in livrée._
+_Dernière mise à jour : 26 septembre 2026 — Packs de règles configurables rendus effectifs (OWASP/CWE/KEV/IaC)._

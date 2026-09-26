@@ -12,7 +12,7 @@ interface RulePack {
   id: string;
   name: string;
   description: string;
-  category: 'owasp' | 'cwe' | 'cisa' | 'custom';
+  category: 'owasp' | 'cwe' | 'cisa' | 'iac' | 'custom';
   rulesCount: number;
   enabled: boolean;
   version: string;
@@ -38,6 +38,7 @@ function inferCategory(id: string): RulePack['category'] {
   if (id.startsWith('owasp')) return 'owasp';
   if (id.startsWith('cwe')) return 'cwe';
   if (id.startsWith('cisa')) return 'cisa';
+  if (id.startsWith('iac')) return 'iac';
   return 'custom';
 }
 
@@ -46,6 +47,7 @@ function inferTags(id: string): string[] {
     'owasp-top10-2021': ['injection', 'xss', 'ssrf', 'auth', 'a01-a10'],
     'cwe-top25': ['cwe-79', 'cwe-89', 'cwe-287', 'cwe-502', 'cwe-918'],
     'cisa-kev': ['kev', 'log4shell', 'spring4shell', 'actively-exploited'],
+    'iac-baseline': ['docker', 'kubernetes', 'terraform', 'misconfig'],
   };
   return map[id] ?? [];
 }
@@ -70,6 +72,7 @@ const FALLBACK_PACKS: RulePack[] = [
   { id: 'owasp-top10-2021', name: 'OWASP Top 10 (2021)', description: 'Règles OWASP Top 10 2021.', category: 'owasp', rulesCount: 8, enabled: true, version: '2021.0.1', author: 'Leanna Security', tags: ['injection', 'xss', 'ssrf', 'auth'], severity: 'mixed' },
   { id: 'cwe-top25', name: 'CWE Top 25 (2023)', description: 'Les 25 faiblesses logicielles CWE les plus dangereuses.', category: 'cwe', rulesCount: 15, enabled: true, version: '2023.0.1', author: 'Leanna Security', tags: ['cwe-79', 'cwe-89', 'cwe-502'], severity: 'critical' },
   { id: 'cisa-kev', name: 'CISA KEV', description: 'Patterns CISA Known Exploited Vulnerabilities.', category: 'cisa', rulesCount: 7, enabled: true, version: '2024.0.1', author: 'Leanna Security', tags: ['kev', 'log4shell', 'actively-exploited'], severity: 'critical' },
+  { id: 'iac-baseline', name: 'IaC Baseline (Docker / K8s / Terraform)', description: 'Durcissement d\'infrastructure : conteneurs root, tags latest, pods privilégiés, ingress ouverts.', category: 'iac', rulesCount: 4, enabled: true, version: '2024.0.1', author: 'Leanna Security', tags: ['docker', 'kubernetes', 'terraform'], severity: 'mixed' },
 ];
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
@@ -78,6 +81,7 @@ const CATEGORY_CONFIG = {
   owasp: { label: 'OWASP', color: '#7c3aed', bg: '#7c3aed15' },
   cwe: { label: 'CWE/MITRE', color: '#3b82f6', bg: '#3b82f615' },
   cisa: { label: 'CISA KEV', color: '#ef4444', bg: '#ef444415' },
+  iac: { label: 'IaC', color: '#f59e0b', bg: '#f59e0b15' },
   custom: { label: 'Custom', color: '#22c55e', bg: '#22c55e15' },
 };
 

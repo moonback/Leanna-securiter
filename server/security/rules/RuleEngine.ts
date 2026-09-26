@@ -9,13 +9,21 @@
  *   const rules = ruleEngine.getRulesForFamily('sast');
  */
 
+import fs from "node:fs";
+import path from "node:path";
+
 import type { Rule, RuleFamily, RuleSeverity } from "./Rule.js";
+import type { Finding } from "../findings/Finding.js";
 
 // ─── Built-in rule packs ───────────────────────────────────────────────────────
 
 import { owaspTop10Rules } from "./packs/owasp-top10-2021.js";
 import { cweTop25Rules } from "./packs/cwe-top25.js";
 import { cisaKevRules } from "./packs/cisa-kev.js";
+import { iacBaselineRules } from "./packs/iac-baseline.js";
+
+// Fichier de persistance de l'état activé/désactivé des packs.
+const STATE_FILE = path.join(process.cwd(), ".Leanna", "rule-packs.json");
 
 // ─── RuleEngine ────────────────────────────────────────────────────────────────
 
@@ -63,6 +71,55 @@ class RuleEngine {
       ruleCount: cisaKevRules.length,
       enabled: true,
     }, cisaKevRules);
+
+    this.registerPack("iac-baseline", {
+      id: "iac-baseline",
+      name: "IaC Baseline (Docker / K8s / Terraform)",
+      version: "2024.0.1",
+      description: "Durcissement d'infrastructure : conteneurs root, tags latest, pods privilégiés, ingress ouverts.",
+      author: "Leanna Security",
+      ruleCount: iacBaselineRules.length,
+      enabled: true,
+    }, iacBaselineRules);
+
+    // Restaure l'état activé/désactivé persisté (survit aux redémarrages).
+    this.loadState();
+  }
+
+  // ─── Persistance de l'état activé/désactivé ───────────────────────────────────
+
+  /**
+   * Recharge l'état activé/désactivé depuis `.Leanna/rule-packs.json`, si présent.
+   * Fail-open : en cas d'erreur, on conserve les valeurs par défaut (tous activés).
+   */
+  private loadState(): void {
+    try {
+      if (!fs.existsSync(STATE_FILE)) return;
+      const raw = fs.readFileSync(STATE_FILE, "utf-8");
+      const parsed = JSON.parse(raw) as { packs?: Record<string, boolean> };
+      if (!parsed || typeof parsed.packs !== "object" || parsed.packs === null) return;
+      for (const [packId, enabled] of Object.entries(parsed.packs)) {
+        const pack = this.packs.get(packId);
+        if (pack && typeof enabled === "boolean") pack.meta.enabled = enabled;
+      }
+      this.cachedRules = null;
+    } catch (err) {
+      console.warn(`[RuleEngine] Impossible de charger l'état des packs: ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * Écrit l'état activé/désactivé courant sur disque. Non bloquant en cas d'échec.
+   */
+  private saveState(): void {
+    try {
+      const packs: Record<string, boolean> = {};
+      for (const { meta } of this.packs.values()) packs[meta.id] = meta.enabled;
+      fs.mkdirSync(path.dirname(STATE_FILE), { recursive: true });
+      fs.writeFileSync(STATE_FILE, JSON.stringify({ packs }, null, 2), "utf-8");
+    } catch (err) {
+      console.warn(`[RuleEngine] Impossible de sauvegarder l'état des packs: ${(err as Error).message}`);
+    }
   }
 
   /**
@@ -81,6 +138,7 @@ class RuleEngine {
     if (!pack) return false;
     pack.meta.enabled = enabled;
     this.cachedRules = null;
+    this.saveState();
     return true;
   }
 
@@ -149,6 +207,83 @@ class RuleEngine {
    */
   getPackRules(packId: string): Rule[] {
     return this.packs.get(packId)?.rules ?? [];
+  }
+
+  // ─── Filtrage des findings par packs activés ─────────────────────────────────
+
+  /**
+   * Construit l'ensemble des identifiants "revendiqués" par un pack : id de règle,
+   * CWE et OWASP. Utilisé pour rattacher un finding produit par un scanner au(x)
+   * pack(s) qui le couvrent.
+   */
+  private packClaims(packId: string): Set<string> {
+    const claims = new Set<string>();
+    const pack = this.packs.get(packId);
+    if (!pack) return claims;
+    for (const rule of pack.rules) {
+      if (rule.id) claims.add(rule.id.toUpperCase());
+      if (rule.cwe) claims.add(rule.cwe.toUpperCase());
+      if (rule.owasp) claims.add(this.normalizeOwasp(rule.owasp));
+    }
+    return claims;
+  }
+
+  /** Normalise une référence OWASP en son préfixe de catégorie (ex: "A03:2021-Injection" → "A03:2021"). */
+  private normalizeOwasp(value: string): string {
+    const m = value.toUpperCase().match(/A\d{1,2}:\d{4}/);
+    return m ? m[0] : value.toUpperCase();
+  }
+
+  /**
+   * Retourne l'ensemble des identifiants d'un finding (ruleId, CWE, OWASP),
+   * normalisés pour comparaison avec `packClaims`.
+   */
+  private findingIdentifiers(finding: Finding): string[] {
+    const ids: string[] = [];
+    if (finding.ruleId) ids.push(finding.ruleId.toUpperCase());
+    const cwes = Array.isArray(finding.cwe) ? finding.cwe : finding.cwe ? [finding.cwe] : [];
+    for (const c of cwes) if (c) ids.push(String(c).toUpperCase());
+    const owasps = Array.isArray(finding.owasp) ? finding.owasp : finding.owasp ? [finding.owasp] : [];
+    for (const o of owasps) if (o) ids.push(this.normalizeOwasp(String(o)));
+    return ids;
+  }
+
+  /**
+   * Détermine si un finding doit être conservé compte tenu de l'état des packs.
+   *
+   * Sémantique (fail-open pour les familles non couvertes) :
+   *  - Si AUCUN pack (activé ou non) ne revendique le finding, il est conservé
+   *    (ex: un secret non associé à un pack ne doit jamais disparaître en désactivant OWASP).
+   *  - Si au moins un pack ACTIVÉ le revendique, il est conservé.
+   *  - Si tous les packs qui le revendiquent sont désactivés, il est filtré.
+   */
+  isFindingAllowed(finding: Finding): boolean {
+    const identifiers = this.findingIdentifiers(finding);
+    if (identifiers.length === 0) return true;
+
+    let claimedByAny = false;
+    let claimedByEnabled = false;
+
+    for (const { meta } of this.packs.values()) {
+      const claims = this.packClaims(meta.id);
+      const matches = identifiers.some((id) => claims.has(id));
+      if (!matches) continue;
+      claimedByAny = true;
+      if (meta.enabled) {
+        claimedByEnabled = true;
+        break;
+      }
+    }
+
+    // Non couvert par aucun pack → conservé. Sinon, conservé seulement si un pack actif le couvre.
+    return !claimedByAny || claimedByEnabled;
+  }
+
+  /**
+   * Filtre une liste de findings en ne conservant que ceux autorisés par les packs actifs.
+   */
+  filterFindings<T extends Finding>(findings: T[]): T[] {
+    return findings.filter((f) => this.isFindingAllowed(f));
   }
 
   /**

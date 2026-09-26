@@ -39,6 +39,7 @@ import { scanDependencies } from '../scanners/DependencyScanner.js';
 import { analyzeFileTaint } from '../scanners/TaintAnalyzer.js';
 import { runDastScan, type DastEndpoint } from '../scanners/DastScanner.js';
 import { SecurityPolicyEngine } from '../policy/SecurityPolicyEngine.js';
+import { ruleEngine } from '../rules/RuleEngine.js';
 
 // ---------------------------------------------------------------------------
 // Re-exports for external consumers
@@ -403,10 +404,28 @@ export class SecurityOrchestrator {
     }
 
     // ------------------------------------------------------------------
+    // 4bis. Filtrage par packs de règles activés.
+    //
+    // Un finding revendiqué exclusivement par des packs désactivés (via ruleId /
+    // CWE / OWASP) est écarté avant l'ingestion. Les findings non couverts par
+    // aucun pack sont conservés (fail-open) afin de ne jamais masquer une famille
+    // de scanners entière en désactivant un pack sans rapport.
+    // ------------------------------------------------------------------
+    const beforePackFilter = rawFindings.length;
+    const gatedFindings = ruleEngine.filterFindings(rawFindings);
+    const droppedByPacks = beforePackFilter - gatedFindings.length;
+    if (droppedByPacks > 0) {
+      console.info(
+        `[SecurityOrchestrator][${scanId}] Rule packs → ${droppedByPacks} finding(s) filtré(s) ` +
+        `(pack désactivé).`
+      );
+    }
+
+    // ------------------------------------------------------------------
     // 5. Ingest into FindingManager (dedup by SARIF fingerprint +
     //    preservation of manual triage states)
     // ------------------------------------------------------------------
-    const uniqueFindings = this.findingManager.ingest(rawFindings);
+    const uniqueFindings = this.findingManager.ingest(gatedFindings);
 
     // Promotion des findings SAST corroborés par la DAST : passage 'open' →
     // 'confirmed' (preuve statique + observation runtime concordantes).
