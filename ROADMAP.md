@@ -107,6 +107,8 @@ Principes directeurs :
 | Vues Scan / Findings / Détail / Surface / Report / Rules | ✅ | Console React 19 complète. |
 | Code Viewer Monaco lecture seule | ✅ | Inspection sans risque de modification. |
 | Graphe de surface d'attaque (risque dérivé des findings) | ✅ | `getAttackSurface` : nœuds/arêtes, score par pondération de sévérité. |
+| **Vue Modèle de menace (STRIDE/MITRE)** | ✅ | `ThreatModelView` (`/threat-model`) : stats, matrice de couverture STRIDE par point d'entrée, liste des menaces avec badges STRIDE + technique MITRE ATT&CK. |
+| **Vue Triage par cause racine** | ✅ | `TriageView` (`/triage`) : grappes priorisées par score de risque, badges KEV/confirmé/EPSS, fichiers touchés, remédiation consolidée. |
 | **Packs de règles configurables (OWASP/CWE/KEV/IaC)** | ✅ | `RulesView` + `RuleEngine` : 4 packs (OWASP Top 10, CWE Top 25, CISA KEV, IaC Baseline) ; activation/désactivation persistée (`.Leanna/rule-packs.json`) et **effective au scan** — les findings d'un pack désactivé sont filtrés avant ingestion (fail-open pour les familles non couvertes). |
 | Visualisation du rapport sandbox dans l'UI | 🔭 | Rendu de `rapport.md` directement dans `/report`. |
 | Diff de posture entre deux scans | 🔭 | Comparaison findings ajoutés/résolus. |
@@ -126,4 +128,4 @@ Principes directeurs :
 
 ---
 
-_Dernière mise à jour : 26 septembre 2026 — Modélisation de menaces STRIDE/MITRE et triage assisté par clustering de causes livrés._
+_Dernière mise à jour : 26 septembre 2026 — Vues Console livrées pour le modèle de menace STRIDE/MITRE (`/threat-model`) et le triage par cause racine (`/triage`)._

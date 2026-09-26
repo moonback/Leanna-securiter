@@ -39,6 +39,8 @@ const FindingDetailView = lazy(() => import('./views/FindingDetailView.js'));
 const AttackSurfaceView = lazy(() => import('./views/AttackSurfaceView.js'));
 const ReportView = lazy(() => import('./views/ReportView.js'));
 const RulesView = lazy(() => import('./views/RulesView.js'));
+const ThreatModelView = lazy(() => import('./views/ThreatModelView.js'));
+const TriageView = lazy(() => import('./views/TriageView.js'));
 import './index.css';
 
 const configuredApiToken = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env?.VITE_Leanna_API_TOKEN?.trim();
@@ -496,6 +498,8 @@ function AnimatedRoutes() {
         <Route path="/findings"      element={wrap(<FindingsView />)} />
         <Route path="/findings/:id"  element={wrap(<FindingDetailView />)} />
         <Route path="/surface"       element={wrap(<AttackSurfaceView />)} />
+        <Route path="/threat-model"  element={wrap(<ThreatModelView />)} />
+        <Route path="/triage"        element={wrap(<TriageView />)} />
         <Route path="/report"        element={wrap(<ReportView />)} />
         <Route path="/rules"         element={wrap(<RulesView />)} />
         {/* ── Legacy / secondary routes (conservés) ─────────────────────── */}

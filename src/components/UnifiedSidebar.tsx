@@ -32,6 +32,8 @@ import {
   FileJson,
   Tag,
   Code2,
+  ShieldAlert,
+  Layers,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -517,6 +519,20 @@ function SecurityConsoleNavSection({
       icon: Network,
       title: "Surface d'attaque",
       active: currentPath === '/surface',
+    },
+    {
+      id: 'threat-model',
+      path: '/threat-model',
+      icon: ShieldAlert,
+      title: 'Modèle de menace (STRIDE/MITRE)',
+      active: currentPath === '/threat-model',
+    },
+    {
+      id: 'triage',
+      path: '/triage',
+      icon: Layers,
+      title: 'Triage par cause racine',
+      active: currentPath === '/triage',
     },
     {
       id: 'report',
