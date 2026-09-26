@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   FileText, Download, CheckCircle2, Loader2, Settings2,
@@ -8,7 +8,7 @@ import {
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface ReportConfig {
-  format: 'sarif' | 'html' | 'pdf' | 'json';
+  format: 'sarif' | 'html' | 'pdf' | 'json' | 'markdown';
   includeExecutiveSummary: boolean;
   includeRemediation: boolean;
   includePoC: boolean;
@@ -64,18 +64,18 @@ const SEVERITY_OPTIONS = [
   { value: 'info', label: 'Toutes', color: '#6b7280' },
 ];
 
-// ─── Report preview stats ─────────────────────────────────────────────────────
+// ─── Default report preview stats (overridden by API) ─────────────────────────
 
-const PREVIEW_STATS = {
-  critical: 2,
-  high: 3,
-  medium: 1,
+const DEFAULT_PREVIEW_STATS = {
+  critical: 0,
+  high: 0,
+  medium: 0,
   low: 0,
-  total: 6,
-  scanners: ['SAST', 'SCA', 'Secrets'],
-  duration: '2m 34s',
-  scannedFiles: 847,
-  lastScan: new Date(Date.now() - 3600000).toLocaleString('fr-FR'),
+  total: 0,
+  scanners: ['SAST', 'SCA', 'Secrets', 'IaC'],
+  duration: '< 1s',
+  scannedFiles: 0,
+  lastScan: 'Aucun scan récent',
 };
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -94,7 +94,7 @@ function FormatCard({
     <motion.button
       type="button"
       onClick={onSelect}
-      className="flex items-start gap-3 p-4 rounded-xl border text-left w-full transition-all"
+      className="flex items-start gap-3 p-4 rounded-xl border text-left w-full transition-all cursor-pointer"
       style={{
         borderColor: selected ? format.color : 'var(--border-base)',
         backgroundColor: selected
@@ -151,7 +151,7 @@ function Toggle({
       <button
         type="button"
         onClick={() => onChange(!value)}
-        className="relative w-9 h-5 rounded-full flex-shrink-0 transition-colors"
+        className="relative w-9 h-5 rounded-full flex-shrink-0 transition-colors cursor-pointer"
         style={{ backgroundColor: value ? 'var(--accent-primary)' : 'var(--border-base)' }}
       >
         <motion.div
@@ -178,9 +178,29 @@ export default function ReportView() {
     author: '',
     targetApp: '',
   });
+  const [previewStats, setPreviewStats] = useState(DEFAULT_PREVIEW_STATS);
   const [generating, setGenerating] = useState(false);
   const [generated, setGenerated] = useState<{ url: string; filename: string } | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/security/stats')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data) {
+          setPreviewStats(prev => ({
+            ...prev,
+            critical: data.critical ?? 0,
+            high: data.high ?? 0,
+            medium: data.medium ?? 0,
+            low: data.low ?? 0,
+            total: data.total ?? 0,
+            lastScan: new Date().toLocaleString('fr-FR'),
+          }));
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const handleGenerate = useCallback(async () => {
     setGenerating(true);
@@ -195,26 +215,27 @@ export default function ReportView() {
 
       if (res.ok) {
         const data = await res.json();
-        setGenerated({ url: data.url, filename: data.filename });
-      } else {
-        // Mock for demo
-        setTimeout(() => {
-          setGenerated({
-            url: '#',
-            filename: `security-report-${config.format}-${Date.now()}.${config.format === 'sarif' ? 'sarif.json' : config.format}`,
-          });
-        }, 2000);
-      }
-    } catch {
-      // Mock
-      setTimeout(() => {
+        let contentStr = '';
+        if (typeof data.content === 'string') {
+          contentStr = data.content;
+        } else if (data.content) {
+          contentStr = JSON.stringify(data.content, null, 2);
+        } else {
+          contentStr = JSON.stringify(data, null, 2);
+        }
+
+        const mime = data.mimeType || (config.format === 'html' ? 'text/html' : config.format === 'markdown' ? 'text/markdown' : 'application/json');
+        const blob = new Blob([contentStr], { type: mime });
+        const url = URL.createObjectURL(blob);
         setGenerated({
-          url: '#',
-          filename: `security-report.${config.format === 'sarif' ? 'sarif.json' : config.format}`,
+          url,
+          filename: data.filename || `security-report-${Date.now()}.${config.format === 'sarif' ? 'sarif.json' : config.format}`,
         });
-      }, 2000);
+      }
+    } catch (err) {
+      console.error('Report generation error:', err);
     } finally {
-      setTimeout(() => setGenerating(false), 2100);
+      setGenerating(false);
     }
   }, [config]);
 
@@ -301,29 +322,29 @@ export default function ReportView() {
           >
             <div>
               <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>Critique</p>
-              <p className="text-lg font-bold" style={{ color: '#dc2626' }}>{PREVIEW_STATS.critical}</p>
+              <p className="text-lg font-bold" style={{ color: '#dc2626' }}>{previewStats.critical}</p>
             </div>
             <div>
               <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>Haute</p>
-              <p className="text-lg font-bold" style={{ color: '#ea580c' }}>{PREVIEW_STATS.high}</p>
+              <p className="text-lg font-bold" style={{ color: '#ea580c' }}>{previewStats.high}</p>
             </div>
             <div>
               <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>Moyenne</p>
-              <p className="text-lg font-bold" style={{ color: '#d97706' }}>{PREVIEW_STATS.medium}</p>
+              <p className="text-lg font-bold" style={{ color: '#d97706' }}>{previewStats.medium}</p>
             </div>
             <div>
               <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>Total</p>
-              <p className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>{PREVIEW_STATS.total}</p>
+              <p className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>{previewStats.total}</p>
             </div>
             <div className="col-span-4 flex items-center gap-4 pt-2 border-t" style={{ borderColor: 'var(--border-base)' }}>
               <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                Scanners : {PREVIEW_STATS.scanners.join(', ')}
+                Scanners : {previewStats.scanners.join(', ')}
               </span>
               <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                {PREVIEW_STATS.scannedFiles} fichiers · {PREVIEW_STATS.duration}
+                {previewStats.scannedFiles} fichiers · {previewStats.duration}
               </span>
               <span className="text-[11px] ml-auto" style={{ color: 'var(--text-muted)' }}>
-                {PREVIEW_STATS.lastScan}
+                {previewStats.lastScan}
               </span>
             </div>
           </div>

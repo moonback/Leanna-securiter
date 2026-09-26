@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import {
   ArrowLeft, AlertTriangle, AlertCircle, Info, ExternalLink,
   CheckCircle2, Copy, Loader2, Eye, BookOpen, Wrench, TrendingUp, GitBranch
@@ -177,6 +177,117 @@ function MarkdownSimple({ content }: { content: string }) {
   );
 }
 
+function TaintFlowVisualizer({
+  taintFlow,
+  file,
+  line,
+}: {
+  taintFlow?: Finding['taintFlow'];
+  file?: string;
+  line?: number;
+}) {
+  if (!taintFlow || taintFlow.length === 0) {
+    return (
+      <div
+        className="p-8 flex flex-col items-center justify-center gap-3 rounded-2xl border text-center"
+        style={{ borderColor: 'var(--border-base)', backgroundColor: 'var(--bg-panel)' }}
+      >
+        <div
+          className="w-12 h-12 rounded-2xl flex items-center justify-center mb-1"
+          style={{ backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-base)' }}
+        >
+          <TrendingUp size={22} style={{ color: 'var(--accent-primary)' }} />
+        </div>
+        <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+          Analyse de propagation Taint
+        </p>
+        <p className="text-xs max-w-md leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+          Cette vulnérabilité est localisée à l'emplacement{' '}
+          <code className="font-mono text-xs px-1.5 py-0.5 rounded" style={{ backgroundColor: 'var(--bg-secondary)' }}>
+            {file ? `${file}:${line ?? ''}` : 'source'}
+          </code>
+          . Le moteur de Taint Tracking enregistre le chemin source-vers-sink dès qu'une propagation inter-variables est identifiée lors du scan SAST.
+        </p>
+      </div>
+    );
+  }
+
+  const STEP_CONFIG = {
+    source: { label: 'Source Entrée', color: '#3b82f6', bg: '#3b82f615' },
+    propagation: { label: 'Propagation', color: '#f59e0b', bg: '#f59e0b15' },
+    sanitizer: { label: 'Sanitizer / Filtre', color: '#22c55e', bg: '#22c55e15' },
+    sink: { label: 'Sink Vulnérable', color: '#ef4444', bg: '#ef444415' },
+  };
+
+  return (
+    <div className="space-y-6 max-w-3xl">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-primary)' }}>
+            Chemin de flux de données teinté ({taintFlow.length} étapes)
+          </h3>
+          <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
+            Traçabilité de l'entrée non sécurisée jusqu'au point d'exécution critique.
+          </p>
+        </div>
+        <span
+          className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+          style={{ backgroundColor: '#ef444415', color: '#ef4444', border: '1px solid #ef444440' }}
+        >
+          Flux Taint Détecté
+        </span>
+      </div>
+
+      <div className="relative pl-6 space-y-4 before:absolute before:left-2.5 before:top-4 before:bottom-4 before:w-0.5 before:bg-[var(--border-base)]">
+        {taintFlow.map((step, idx) => {
+          const cfg = STEP_CONFIG[step.kind] || STEP_CONFIG.propagation;
+          return (
+            <motion.div
+              key={step.step || idx}
+              initial={{ opacity: 0, x: -6 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: idx * 0.06 }}
+              className="relative rounded-xl border p-4 shadow-sm"
+              style={{ borderColor: 'var(--border-base)', backgroundColor: 'var(--bg-panel)' }}
+            >
+              <div
+                className="absolute -left-6 top-4 w-3.5 h-3.5 rounded-full border-2 -translate-x-1/2"
+                style={{ backgroundColor: cfg.color, borderColor: 'var(--bg-base)' }}
+              />
+
+              <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <span
+                    className="text-[10px] font-bold px-2 py-0.5 rounded"
+                    style={{ backgroundColor: cfg.bg, color: cfg.color, border: `1px solid ${cfg.color}40` }}
+                  >
+                    Étape {step.step || idx + 1} · {cfg.label}
+                  </span>
+                  {step.variableName && (
+                    <code
+                      className="text-[11px] font-mono font-semibold px-1.5 py-0.5 rounded"
+                      style={{ backgroundColor: 'var(--bg-secondary)', color: 'var(--accent-primary)' }}
+                    >
+                      ${step.variableName}
+                    </code>
+                  )}
+                </div>
+                <span className="text-[10px] font-mono" style={{ color: 'var(--text-muted)' }}>
+                  {step.filePath}:{step.line}
+                </span>
+              </div>
+
+              <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+                {step.description}
+              </p>
+            </motion.div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main View ────────────────────────────────────────────────────────────────
 
 export default function FindingDetailView() {
@@ -184,53 +295,105 @@ export default function FindingDetailView() {
   const navigate = useNavigate();
   const [finding, setFinding] = useState<Finding | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'code' | 'remediation' | 'taint'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'code' | 'remediation' | 'taint' | 'audit'>('overview');
   const [status, setStatus] = useState<Finding['status']>('open');
+  const [auditTrail, setAuditTrail] = useState<any[]>([]);
+
+  // Triage rationale modal / inline
+  const [triageTargetStatus, setTriageTargetStatus] = useState<Finding['status'] | null>(null);
+  const [triageRationale, setTriageRationale] = useState('');
+  const [triageSubmitting, setTriageSubmitting] = useState(false);
+
+  const loadFinding = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/security/findings/${id}`);
+      const data = res.ok ? await res.json() : null;
+      const raw = data?.finding ?? data;
+
+      if (raw && (raw.id || raw.title)) {
+        const normalized: Finding = {
+          id: raw.id,
+          title: raw.title || raw.ruleName || 'Vulnérabilité sans titre',
+          severity: raw.severity || 'medium',
+          cwe: Array.isArray(raw.cwe) ? raw.cwe.join(', ') : raw.cwe,
+          owasp: Array.isArray(raw.owasp) ? raw.owasp.join(', ') : raw.owasp,
+          scanner: raw.scanner || 'sast',
+          file: raw.location?.filePath || raw.file || '',
+          line: raw.location?.startLine ?? raw.line,
+          snippet: raw.location?.snippet || raw.snippet,
+          description: raw.description || '',
+          impact: raw.impact,
+          remediation: raw.remediation,
+          suggestedPatch: raw.suggestedPatch,
+          cvss: raw.cvssScore ?? raw.cvss,
+          epss: raw.epssScore ?? raw.epss,
+          kev: raw.cisaKev ?? raw.kev ?? false,
+          status: raw.status || 'open',
+          fingerprint: raw.fingerprint,
+          detectedAt: raw.firstSeen || raw.detectedAt || new Date().toISOString(),
+          taintFlow: raw.taintFlow,
+          references: raw.references,
+        };
+        setFinding(normalized);
+        setStatus(normalized.status);
+      } else {
+        setFinding(MOCK_FINDING);
+        setStatus(MOCK_FINDING.status);
+      }
+    } catch {
+      setFinding(MOCK_FINDING);
+      setStatus(MOCK_FINDING.status);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadAudit = async () => {
+    try {
+      const res = await fetch(`/api/security/triage-audit/${id}`);
+      if (res.ok) {
+        const data = await res.json();
+        setAuditTrail(Array.isArray(data) ? data : data?.auditTrail ?? []);
+      }
+    } catch {
+      // Ignore
+    }
+  };
 
   useEffect(() => {
-    setLoading(true);
-    fetch(`/api/security/findings/${id}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(data => {
-        const raw = data?.finding ?? data;
-        if (raw && (raw.id || raw.title)) {
-          const normalized: Finding = {
-            id: raw.id,
-            title: raw.title || raw.ruleName || 'Vulnérabilité sans titre',
-            severity: raw.severity || 'medium',
-            cwe: Array.isArray(raw.cwe) ? raw.cwe.join(', ') : raw.cwe,
-            owasp: Array.isArray(raw.owasp) ? raw.owasp.join(', ') : raw.owasp,
-            scanner: raw.scanner || 'sast',
-            file: raw.location?.filePath || raw.file || '',
-            line: raw.location?.startLine ?? raw.line,
-            snippet: raw.location?.snippet || raw.snippet,
-            description: raw.description || '',
-            remediation: raw.remediation,
-            cvss: raw.cvssScore ?? raw.cvss,
-            epss: raw.epssScore ?? raw.epss,
-            kev: raw.cisaKev ?? raw.kev ?? false,
-            status: raw.status || 'open',
-            fingerprint: raw.fingerprint,
-            detectedAt: raw.firstSeen || raw.detectedAt || new Date().toISOString(),
-          };
-          setFinding(normalized);
-          setStatus(normalized.status);
-        } else {
-          setFinding(MOCK_FINDING);
-          setStatus(MOCK_FINDING.status);
-        }
-      })
-      .catch(() => { setFinding(MOCK_FINDING); setStatus(MOCK_FINDING.status); })
-      .finally(() => setLoading(false));
+    loadFinding();
+    loadAudit();
   }, [id]);
 
-  const handleStatusChange = async (newStatus: Finding['status']) => {
-    setStatus(newStatus);
-    await fetch(`/api/security/findings/${id}/status`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: newStatus }),
-    }).catch(() => {});
+  const handleOpenTriage = (newStatus: Finding['status']) => {
+    if (newStatus === status) return;
+    setTriageTargetStatus(newStatus);
+    setTriageRationale('');
+  };
+
+  const handleConfirmTriage = async () => {
+    if (!triageTargetStatus) return;
+    setTriageSubmitting(true);
+    try {
+      await fetch(`/api/security/findings/${id}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: triageTargetStatus,
+          rationale: triageRationale.trim() || undefined,
+          author: 'Analyste Sécurité',
+        }),
+      });
+      setStatus(triageTargetStatus);
+      if (finding) setFinding({ ...finding, status: triageTargetStatus });
+      setTriageTargetStatus(null);
+      await loadAudit();
+    } catch (e) {
+      console.error('Triage status update failed:', e);
+    } finally {
+      setTriageSubmitting(false);
+    }
   };
 
   if (loading) {
@@ -256,8 +419,9 @@ export default function FindingDetailView() {
   const TABS = [
     { id: 'overview', label: 'Vue d\'ensemble', icon: Eye },
     { id: 'code', label: 'Code source', icon: GitBranch },
-    { id: 'remediation', label: 'Remédiation', icon: Wrench },
+    { id: 'remediation', label: 'Remédiation & Patch', icon: Wrench },
     { id: 'taint', label: 'Flux Taint', icon: TrendingUp },
+    { id: 'audit', label: 'Audit Triage', icon: BookOpen },
   ] as const;
 
   return (
@@ -323,8 +487,8 @@ export default function FindingDetailView() {
               {STATUS_OPTIONS.map(opt => (
                 <button
                   key={opt.value}
-                  onClick={() => handleStatusChange(opt.value as Finding['status'])}
-                  className="text-[10px] px-2 py-0.5 rounded-md transition-all"
+                  onClick={() => handleOpenTriage(opt.value as Finding['status'])}
+                  className="text-[10px] px-2 py-0.5 rounded-md transition-all cursor-pointer"
                   style={{
                     backgroundColor: status === opt.value ? `${opt.color}20` : 'var(--bg-secondary)',
                     color: status === opt.value ? opt.color : 'var(--text-muted)',
@@ -337,6 +501,58 @@ export default function FindingDetailView() {
               ))}
             </div>
           </div>
+
+          {/* Triage Rationale Dialog Banner */}
+          <AnimatePresence>
+            {triageTargetStatus && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="mt-3 ml-11 p-3 rounded-xl border space-y-2 overflow-hidden"
+                style={{ borderColor: 'var(--accent-primary)', backgroundColor: 'var(--bg-secondary)' }}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold" style={{ color: 'var(--text-primary)' }}>
+                    Changement de statut vers « {STATUS_OPTIONS.find(o => o.value === triageTargetStatus)?.label} »
+                  </span>
+                  <button
+                    onClick={() => setTriageTargetStatus(null)}
+                    className="text-xs"
+                    style={{ color: 'var(--text-muted)' }}
+                  >
+                    Annuler
+                  </button>
+                </div>
+                <input
+                  type="text"
+                  placeholder="Justification du triage (ex: Faux positif vérifié, Corrigé via PR #42...)"
+                  value={triageRationale}
+                  onChange={(e) => setTriageRationale(e.target.value)}
+                  className="w-full text-xs px-3 py-1.5 rounded-lg border outline-none"
+                  style={{ backgroundColor: 'var(--bg-input)', borderColor: 'var(--border-base)', color: 'var(--text-primary)' }}
+                />
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={() => setTriageTargetStatus(null)}
+                    className="px-2.5 py-1 text-xs rounded-lg border"
+                    style={{ borderColor: 'var(--border-base)', color: 'var(--text-muted)' }}
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    onClick={handleConfirmTriage}
+                    disabled={triageSubmitting}
+                    className="px-3 py-1 text-xs font-medium rounded-lg flex items-center gap-1.5"
+                    style={{ backgroundColor: 'var(--accent-primary)', color: '#fff' }}
+                  >
+                    {triageSubmitting && <Loader2 size={11} className="animate-spin" />}
+                    Confirmer le statut
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
 
@@ -351,7 +567,7 @@ export default function FindingDetailView() {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className="flex items-center gap-1.5 px-4 py-3 text-xs font-medium border-b-2 transition-all"
+              className="flex items-center gap-1.5 px-4 py-3 text-xs font-medium border-b-2 transition-all cursor-pointer"
               style={{
                 borderBottomColor: activeTab === tab.id ? 'var(--accent-primary)' : 'transparent',
                 color: activeTab === tab.id ? 'var(--accent-primary)' : 'var(--text-muted)',
@@ -380,6 +596,18 @@ export default function FindingDetailView() {
                 </div>
               </section>
 
+              {finding.impact && (
+                <section>
+                  <h2 className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--text-muted)' }}>Impact Sécurité</h2>
+                  <div
+                    className="rounded-xl border p-4"
+                    style={{ borderColor: '#ef444430', backgroundColor: '#ef444408' }}
+                  >
+                    <MarkdownSimple content={finding.impact} />
+                  </div>
+                </section>
+              )}
+
               {finding.snippet && (
                 <section>
                   <h2 className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--text-muted)' }}>
@@ -395,7 +623,7 @@ export default function FindingDetailView() {
               )}
             </div>
 
-            {/* Right: scores */}
+            {/* Right: scores & metadata */}
             <div className="space-y-4">
               {finding.cvss !== undefined && (
                 <div
@@ -457,7 +685,7 @@ export default function FindingDetailView() {
         {activeTab === 'code' && (
           <div className="p-6 space-y-6">
             <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-              Visualisation du code vulnérable en mode lecture seule (Monaco editor complet disponible dans la prochaine version).
+              Visualisation du code vulnérable analysé par le scanner.
             </p>
             {finding.snippet && (
               <section>
@@ -471,7 +699,7 @@ export default function FindingDetailView() {
         )}
 
         {activeTab === 'remediation' && (
-          <div className="p-6 space-y-6">
+          <div className="p-6 space-y-6 max-w-4xl">
             {finding.remediation ? (
               <>
                 <section>
@@ -480,6 +708,16 @@ export default function FindingDetailView() {
                     <MarkdownSimple content={finding.remediation} />
                   </div>
                 </section>
+
+                {finding.suggestedPatch && (
+                  <section>
+                    <h2 className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--text-muted)' }}>
+                      Patch suggéré (Diff)
+                    </h2>
+                    <CodeBlock code={finding.suggestedPatch} language="diff" />
+                  </section>
+                )}
+
                 {finding.cwe && (
                   <section>
                     <h2 className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--text-muted)' }}>Références</h2>
@@ -515,16 +753,48 @@ export default function FindingDetailView() {
         )}
 
         {activeTab === 'taint' && (
-          <div className="p-6 flex flex-col items-center justify-center gap-4 min-h-[300px]">
-            <TrendingUp size={40} style={{ color: 'var(--text-muted)' }} />
-            <div className="text-center">
-              <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-                Visualisation du flux Taint
+          <div className="p-6">
+            <TaintFlowVisualizer
+              taintFlow={finding.taintFlow}
+              file={finding.file}
+              line={finding.line}
+            />
+          </div>
+        )}
+
+        {activeTab === 'audit' && (
+          <div className="p-6 space-y-4 max-w-3xl">
+            <h2 className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
+              Journal d'audit de triage ({auditTrail.length} entrées)
+            </h2>
+            {auditTrail.length === 0 ? (
+              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                Aucune modification de statut enregistrée pour cette vulnérabilité.
               </p>
-              <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-                Disponible après la Phase 3 (TaintAnalyzer + ASTCallGraph)
-              </p>
-            </div>
+            ) : (
+              <div className="space-y-3">
+                {auditTrail.map((entry, idx) => (
+                  <div
+                    key={idx}
+                    className="rounded-xl border p-3 text-xs space-y-1"
+                    style={{ borderColor: 'var(--border-base)', backgroundColor: 'var(--bg-panel)' }}
+                  >
+                    <div className="flex items-center justify-between text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                      <span>{new Date(entry.timestamp).toLocaleString('fr-FR')}</span>
+                      <span>par {entry.author || 'Analyste'}</span>
+                    </div>
+                    <p className="font-semibold" style={{ color: 'var(--text-primary)' }}>
+                      Statut : {entry.previousStatus} → {entry.newStatus}
+                    </p>
+                    {entry.rationale && (
+                      <p className="text-[11px] italic" style={{ color: 'var(--text-secondary)' }}>
+                        « {entry.rationale} »
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -154,6 +154,9 @@ export class FindingManager {
       ignored:      all.filter((f) => f.status === 'ignored').length,
       critical:     all.filter((f) => f.severity === 'critical' && f.status === 'open').length,
       high:         all.filter((f) => f.severity === 'high'     && f.status === 'open').length,
+      medium:       all.filter((f) => f.severity === 'medium'   && f.status === 'open').length,
+      low:          all.filter((f) => f.severity === 'low'      && f.status === 'open').length,
+      info:         all.filter((f) => f.severity === 'info'     && f.status === 'open').length,
       cisaKev:      all.filter((f) => f.cisaKev                && f.status === 'open').length,
     };
   }

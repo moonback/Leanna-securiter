@@ -301,7 +301,15 @@ export default function ScanView() {
       const res = await fetch('/api/security/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ target, profile: config.profile, scanners: activeScanners, options: config.options }),
+        body: JSON.stringify({
+          targetDir: target,
+          profile: config.profile as 'quick' | 'standard' | 'full' | 'custom',
+          triggerType: 'api',
+          policyOverride: {
+            excludePaths: config.options.excludePaths.split(',').map(s => s.trim()).filter(Boolean),
+            maxFilesTotal: config.options.maxFiles,
+          },
+        }),
       });
 
       if (!res.ok) {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -20,13 +20,24 @@ export interface Finding {
   line?: number;
   snippet?: string;
   description: string;
+  impact?: string;
   remediation?: string;
+  suggestedPatch?: string;
   cvss?: number;
   epss?: number;
   kev?: boolean;
   status: 'open' | 'acknowledged' | 'false_positive' | 'fixed';
   fingerprint: string;
   detectedAt: string;
+  taintFlow?: Array<{
+    step: number;
+    filePath: string;
+    line: number;
+    kind: 'source' | 'propagation' | 'sanitizer' | 'sink';
+    description: string;
+    variableName?: string;
+  }>;
+  references?: string[];
 }
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
@@ -302,38 +313,68 @@ export default function FindingsView() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [showFilters, setShowFilters] = useState(false);
 
-  useEffect(() => {
+  const fetchFindings = useCallback(async () => {
     setLoading(true);
-    fetch('/api/security/findings')
-      .then(r => r.ok ? r.json() : null)
-      .then(data => {
-        if (data?.findings && Array.isArray(data.findings)) {
-          const normalized = data.findings.map((f: any) => ({
-            id: f.id,
-            title: f.title || f.ruleName || 'Vulnérabilité sans titre',
-            severity: f.severity || 'medium',
-            cwe: Array.isArray(f.cwe) ? f.cwe.join(', ') : f.cwe,
-            owasp: Array.isArray(f.owasp) ? f.owasp.join(', ') : f.owasp,
-            scanner: f.scanner || 'sast',
-            file: f.location?.filePath || f.file || '',
-            line: f.location?.startLine ?? f.line,
-            snippet: f.location?.snippet || f.snippet,
-            description: f.description || '',
-            remediation: f.remediation,
-            cvss: f.cvssScore ?? f.cvss,
-            epss: f.epssScore ?? f.epss,
-            kev: f.cisaKev ?? f.kev ?? false,
-            status: f.status || 'open',
-            fingerprint: f.fingerprint,
-            detectedAt: f.firstSeen || f.detectedAt || new Date().toISOString(),
-          }));
-          setFindings(normalized);
-        } else {
-          setFindings(MOCK_FINDINGS);
-        }
-      })
-      .catch(() => setFindings(MOCK_FINDINGS))
-      .finally(() => setLoading(false));
+    try {
+      const r = await fetch('/api/security/findings');
+      const data = r.ok ? await r.json() : null;
+      const list = Array.isArray(data) ? data : (data?.findings && Array.isArray(data.findings)) ? data.findings : null;
+      if (list && list.length > 0) {
+        const normalized = list.map((f: any) => ({
+          id: f.id,
+          title: f.title || f.ruleName || 'Vulnérabilité sans titre',
+          severity: f.severity || 'medium',
+          cwe: Array.isArray(f.cwe) ? f.cwe.join(', ') : f.cwe,
+          owasp: Array.isArray(f.owasp) ? f.owasp.join(', ') : f.owasp,
+          scanner: f.scanner || 'sast',
+          file: f.location?.filePath || f.file || '',
+          line: f.location?.startLine ?? f.line,
+          snippet: f.location?.snippet || f.snippet,
+          description: f.description || '',
+          impact: f.impact,
+          remediation: f.remediation,
+          cvss: f.cvssScore ?? f.cvss,
+          epss: f.epssScore ?? f.epss,
+          kev: f.cisaKev ?? f.kev ?? false,
+          status: f.status || 'open',
+          fingerprint: f.fingerprint,
+          detectedAt: f.firstSeen || f.detectedAt || new Date().toISOString(),
+          taintFlow: f.taintFlow,
+          references: f.references,
+        }));
+        setFindings(normalized);
+      } else if (list && list.length === 0) {
+        setFindings([]);
+      } else {
+        setFindings(MOCK_FINDINGS);
+      }
+    } catch {
+      setFindings(MOCK_FINDINGS);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchFindings();
+  }, [fetchFindings]);
+
+  const handleExportSarif = useCallback(async () => {
+    try {
+      const res = await fetch('/api/security/sarif');
+      if (!res.ok) throw new Error('Erreur SARIF');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `leanna-sarif-${Date.now()}.sarif.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error('Export SARIF error:', e);
+    }
   }, []);
 
   const SEVERITY_ORDER: Record<string, number> = { critical: 5, high: 4, medium: 3, low: 2, info: 1 };
@@ -405,14 +446,15 @@ export default function FindingsView() {
             whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-medium transition-all"
             style={{ borderColor: 'var(--border-base)', color: 'var(--text-secondary)', backgroundColor: 'var(--bg-panel)' }}
-            onClick={() => window.location.reload()}
+            onClick={fetchFindings}
           >
-            <RefreshCw size={13} /> Rafraîchir
+            <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> Rafraîchir
           </motion.button>
           <motion.button
             whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-medium transition-all"
             style={{ borderColor: 'var(--border-base)', color: 'var(--text-secondary)', backgroundColor: 'var(--bg-panel)' }}
+            onClick={handleExportSarif}
           >
             <Download size={13} /> Export SARIF
           </motion.button>
