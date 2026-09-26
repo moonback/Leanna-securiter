@@ -397,39 +397,84 @@ export class SecurityOrchestrator {
   // Attack surface graph
   // -------------------------------------------------------------------------
 
+  /**
+   * Construit le graphe de surface d'attaque.
+   *
+   * La topologie (nœuds/arêtes) reflète l'architecture du système ; en revanche
+   * `riskScore`, `vulnCount` et `tainted` sont désormais **dérivés des findings
+   * réels** plutôt que codés en dur. Chaque finding est associé à un nœud selon
+   * son scanner/règle, puis le score de risque du nœud est calculé par
+   * pondération de sévérité. Une arête est marquée `tainted` si au moins un de
+   * ses nœuds porte un finding.
+   */
   public getAttackSurface(): AttackSurfaceGraph {
     const findings = this.findingManager.query({ status: 'open' });
 
+    // Poids de sévérité pour le calcul de risque.
+    const SEV_WEIGHT: Record<Finding['severity'], number> = {
+      critical: 40, high: 25, medium: 12, low: 5, info: 1,
+    };
+
+    // Topologie de base (labels/types stables), risque initialisé à 0.
     const nodes: AttackSurfaceNode[] = [
-      { id: 'ep-api-routes',        label: 'API Express Endpoints (/api/*)',   type: 'entrypoint', riskScore: 82, vulnCount: 0 },
-      { id: 'ep-websocket',         label: 'WebSocket Stream (:3001/ws)',       type: 'entrypoint', riskScore: 65, vulnCount: 0 },
-      { id: 'srv-orchestrator',     label: 'Security Orchestrator Core',        type: 'service',    riskScore: 40, vulnCount: 0 },
-      { id: 'srv-agent-runtime',    label: 'Multi-Agent Runtime (VM Sandbox)',  type: 'service',    riskScore: 55, vulnCount: 0 },
-      { id: 'db-sqlite-local',      label: 'SQLite Memory & Graph DB',          type: 'database',   riskScore: 30, vulnCount: 0 },
-      { id: 'ext-llm-providers',    label: 'LLM APIs (Gemini, OpenRouter)',     type: 'external',   riskScore: 45, vulnCount: 0 },
-      { id: 'fs-workspace-sandbox', label: 'Workspace Filesystem',              type: 'storage',    riskScore: 60, vulnCount: 0 },
+      { id: 'ep-api-routes',        label: 'API Express Endpoints (/api/*)',   type: 'entrypoint', riskScore: 0, vulnCount: 0 },
+      { id: 'ep-websocket',         label: 'WebSocket Stream (:3001/ws)',       type: 'entrypoint', riskScore: 0, vulnCount: 0 },
+      { id: 'srv-orchestrator',     label: 'Security Orchestrator Core',        type: 'service',    riskScore: 0, vulnCount: 0 },
+      { id: 'srv-agent-runtime',    label: 'Multi-Agent Runtime (VM Sandbox)',  type: 'service',    riskScore: 0, vulnCount: 0 },
+      { id: 'db-sqlite-local',      label: 'SQLite Memory & Graph DB',          type: 'database',   riskScore: 0, vulnCount: 0 },
+      { id: 'ext-llm-providers',    label: 'LLM APIs (Gemini, OpenRouter)',     type: 'external',   riskScore: 0, vulnCount: 0 },
+      { id: 'fs-workspace-sandbox', label: 'Workspace Filesystem',              type: 'storage',    riskScore: 0, vulnCount: 0 },
     ];
+    const nodeById = new Map(nodes.map((n) => [n.id, n]));
+
+    // Cumul de risque brut par nœud (avant normalisation).
+    const rawRisk = new Map<string, number>();
+    const addRisk = (id: string, weight: number) => {
+      rawRisk.set(id, (rawRisk.get(id) ?? 0) + weight);
+    };
+
+    /** Associe un finding à un nœud de la surface d'attaque. */
+    const nodeForFinding = (f: Finding): string => {
+      const rule = f.ruleId.toUpperCase();
+      const file = f.location?.filePath?.toLowerCase() ?? '';
+      if (f.scanner === 'sca') return 'ext-llm-providers'; // dépendances externes
+      if (f.scanner === 'secrets') return 'ext-llm-providers';
+      if (f.scanner === 'iac') return 'fs-workspace-sandbox';
+      if (f.scanner === 'dast') return 'ep-api-routes';
+      // SAST : router selon la nature de la règle / le fichier.
+      if (rule.includes('SQL') || rule.includes('CWE-89') || rule.includes('CWE-943')) return 'db-sqlite-local';
+      if (file.includes('websocket') || file.includes('/ws')) return 'ep-websocket';
+      if (file.includes('route') || file.includes('/api/') || file.includes('server')) return 'ep-api-routes';
+      if (file.includes('agent') || file.includes('runtime')) return 'srv-agent-runtime';
+      return 'srv-orchestrator';
+    };
 
     for (const f of findings) {
-      if (f.scanner === 'sast' && f.ruleId.includes('SQL')) {
-        nodes.find((n) => n.id === 'db-sqlite-local')!.vulnCount++;
-      } else if (f.scanner === 'secrets') {
-        nodes.find((n) => n.id === 'ext-llm-providers')!.vulnCount++;
-      } else if (f.scanner === 'iac') {
-        nodes.find((n) => n.id === 'fs-workspace-sandbox')!.vulnCount++;
-      } else {
-        nodes.find((n) => n.id === 'ep-api-routes')!.vulnCount++;
-      }
+      const nodeId = nodeForFinding(f);
+      const node = nodeById.get(nodeId);
+      if (!node) continue;
+      node.vulnCount++;
+      addRisk(nodeId, SEV_WEIGHT[f.severity] ?? 1);
     }
 
-    const edges: AttackSurfaceEdge[] = [
-      { source: 'ep-api-routes',       target: 'srv-orchestrator',     protocol: 'HTTP REST',           tainted: true  },
-      { source: 'ep-websocket',        target: 'srv-orchestrator',     protocol: 'WS / WSS',            tainted: false },
-      { source: 'srv-orchestrator',    target: 'srv-agent-runtime',    protocol: 'IPC / Node VM',       tainted: true  },
-      { source: 'srv-orchestrator',    target: 'db-sqlite-local',      protocol: 'SQLite / better-sqlite3', tainted: false },
-      { source: 'srv-agent-runtime',   target: 'fs-workspace-sandbox', protocol: 'Fail-closed FS',      tainted: true  },
-      { source: 'srv-agent-runtime',   target: 'ext-llm-providers',    protocol: 'HTTPS TLS 1.3',       tainted: false },
+    // Normalisation du risque en 0..100 (saturation à 100).
+    for (const node of nodes) {
+      node.riskScore = Math.min(100, rawRisk.get(node.id) ?? 0);
+    }
+
+    // Topologie des arêtes ; `tainted` dérivé de la présence de vulnérabilités.
+    const baseEdges: Array<Omit<AttackSurfaceEdge, 'tainted'>> = [
+      { source: 'ep-api-routes',     target: 'srv-orchestrator',     protocol: 'HTTP REST' },
+      { source: 'ep-websocket',      target: 'srv-orchestrator',     protocol: 'WS / WSS' },
+      { source: 'srv-orchestrator',  target: 'srv-agent-runtime',    protocol: 'IPC / Node VM' },
+      { source: 'srv-orchestrator',  target: 'db-sqlite-local',      protocol: 'SQLite / better-sqlite3' },
+      { source: 'srv-agent-runtime', target: 'fs-workspace-sandbox', protocol: 'Fail-closed FS' },
+      { source: 'srv-agent-runtime', target: 'ext-llm-providers',    protocol: 'HTTPS TLS 1.3' },
     ];
+    const edges: AttackSurfaceEdge[] = baseEdges.map((e) => ({
+      ...e,
+      tainted: (nodeById.get(e.source)?.vulnCount ?? 0) > 0 || (nodeById.get(e.target)?.vulnCount ?? 0) > 0,
+    }));
 
     const highCritCount = findings.filter(
       (f) => f.severity === 'critical' || f.severity === 'high'

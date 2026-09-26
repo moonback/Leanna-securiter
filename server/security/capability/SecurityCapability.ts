@@ -19,9 +19,6 @@
  * explicite via un autre outil).
  */
 
-import fs from 'node:fs';
-import path from 'node:path';
-
 import {
   SecurityOrchestrator,
   type ScanExecutionResult,
@@ -30,6 +27,7 @@ import {
 } from '../orchestrator/SecurityOrchestrator.js';
 import type { Finding, FindingStatus } from '../findings/Finding.js';
 import type { FindingFilterOptions } from '../orchestrator/FindingManager.js';
+import { SecurityPolicyEngine, type PolicyDecision } from '../policy/SecurityPolicyEngine.js';
 
 // ---------------------------------------------------------------------------
 // Modes d'audit exposés à Leanna (section 14 du plan)
@@ -65,6 +63,12 @@ export interface SecurityCapability {
   generateSarif(): Record<string, unknown>;
   generateSbom(projectName: string, projectVersion: string): Record<string, unknown>;
   updateFindingStatus(id: string, status: FindingStatus, rationale?: string, author?: string): boolean;
+  /**
+   * Évalue si une analyse dynamique (DAST) peut cibler `target`, en tenant
+   * compte de l'opt-in explicite ET de la classification d'environnement.
+   * Ne lance PAS la DAST : renvoie uniquement la décision de gouvernance.
+   */
+  checkDastTarget(target: string, explicitOptIn: boolean): PolicyDecision;
 }
 
 // ---------------------------------------------------------------------------
@@ -84,56 +88,32 @@ export class SecurityCapabilityDeniedError extends Error {
 
 export class SecurityCapabilityGateway implements SecurityCapability {
   private readonly orchestrator: SecurityOrchestrator;
+  private readonly policy: SecurityPolicyEngine;
 
   constructor(
     private readonly workspaceRoot: string,
     orchestrator?: SecurityOrchestrator,
+    policy?: SecurityPolicyEngine,
   ) {
     if (!workspaceRoot || !workspaceRoot.trim()) {
       throw new SecurityCapabilityDeniedError('aucun workspace actif.');
     }
     this.orchestrator = orchestrator ?? SecurityOrchestrator.getInstance();
+    this.policy = policy ?? new SecurityPolicyEngine(workspaceRoot);
   }
 
-  // --- Politique d'accès (SecurityPolicyEngine condensé) -------------------
+  // --- Politique d'accès (déléguée au SecurityPolicyEngine) ----------------
 
   /**
-   * Résout une cible **strictement à l'intérieur du workspace**.
-   * Refuse chemins absolus, remontées `..` et sorties via symlink/junction.
+   * Résout une cible **strictement à l'intérieur du workspace** via le moteur
+   * de politique. Lève `SecurityCapabilityDeniedError` si la cible est refusée.
    */
   private resolveInsideWorkspace(target?: string): string {
-    const realRoot = this.safeRealpath(path.resolve(this.workspaceRoot));
-
-    if (target === undefined || target === null || target.trim() === '' || target.trim() === '.') {
-      return realRoot;
+    const decision = this.policy.canScan(target);
+    if (decision.effect !== 'allow' || !decision.target) {
+      throw new SecurityCapabilityDeniedError(decision.reason);
     }
-
-    const requested = target.trim();
-    if (
-      path.isAbsolute(requested) ||
-      path.win32.isAbsolute(requested) ||
-      path.posix.isAbsolute(requested) ||
-      /^[a-zA-Z]:/.test(requested) ||
-      requested.startsWith('\\\\')
-    ) {
-      throw new SecurityCapabilityDeniedError(`chemin absolu interdit : "${requested}".`);
-    }
-
-    const candidate = path.resolve(realRoot, requested);
-    const real = this.safeRealpath(candidate);
-    const rel = path.relative(realRoot, real);
-    if (rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) {
-      throw new SecurityCapabilityDeniedError(`cible hors du workspace : "${requested}".`);
-    }
-    return real;
-  }
-
-  private safeRealpath(p: string): string {
-    try {
-      return fs.existsSync(p) ? fs.realpathSync(p) : p;
-    } catch {
-      return p;
-    }
+    return decision.target;
   }
 
   // --- Capacités -----------------------------------------------------------
@@ -192,6 +172,10 @@ export class SecurityCapabilityGateway implements SecurityCapability {
 
   updateFindingStatus(id: string, status: FindingStatus, rationale?: string, author?: string): boolean {
     return this.orchestrator.updateFindingStatus(id, status, rationale, author);
+  }
+
+  checkDastTarget(target: string, explicitOptIn: boolean): PolicyDecision {
+    return this.policy.canRunDast(target, explicitOptIn);
   }
 }
 
