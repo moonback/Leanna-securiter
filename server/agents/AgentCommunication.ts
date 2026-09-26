@@ -199,6 +199,26 @@ export const DELEGATION_MATRIX: Partial<Record<AgentRole, DelegationCapability[]
   poc_writer: [
     { targetRole: "report_writer", taskTypes: ["inclusion-poc-rapport"], reason: "Intégration du PoC dans la section remédiation du rapport" },
   ],
+  architect_sec: [
+    { targetRole: "threat_modeler", taskTypes: ["menaces-architecturales"], reason: "Consolidation des menaces par frontière" },
+    { targetRole: "sast_analyzer", taskTypes: ["analyse-ciblee"], reason: "Analyse des zones sensibles identifiées" },
+  ],
+  crypto_auditor: [
+    { targetRole: "triage", taskTypes: ["triage-findings"], reason: "Qualification des findings crypto" },
+  ],
+  auth_auditor: [
+    { targetRole: "triage", taskTypes: ["triage-findings"], reason: "Qualification des findings auth" },
+  ],
+  secrets_hunter: [
+    { targetRole: "triage", taskTypes: ["triage-findings", "masking"], reason: "Triage des secrets exposés (masquage avant triage)" },
+  ],
+  iac_auditor: [
+    { targetRole: "triage", taskTypes: ["triage-findings"], reason: "Qualification des findings IaC" },
+  ],
+  dast_runner: [
+    { targetRole: "poc_writer", taskTypes: ["validation-poc"], reason: "Consolidation des PoC des findings validés" },
+    { targetRole: "triage", taskTypes: ["triage-findings"], reason: "Qualification des findings dynamiques" },
+  ],
 
   // ── Code & Ingénierie logicielle ──
   coder: [

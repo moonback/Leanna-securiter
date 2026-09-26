@@ -35,7 +35,8 @@ import { fileURLToPath } from "url";
 import process from "node:process";
 
 import { PromptRegistry }   from "../PromptRegistry.js";
-import { loadPromptTemplates } from "./loader.js";
+import { loadPromptTemplates, loadPromptMeta } from "./loader.js";
+import type { ParsedFrontMatter } from "./loader.js";
 import { ContextResolver }  from "./ContextResolver.js";
 import { RuleRegistry }     from "./RuleRegistry.js";
 import { ConflictResolver } from "./ConflictResolver.js";
@@ -311,7 +312,15 @@ export class SystemPromptBuilder {
 
     const files = fs.readdirSync(promptsDir).filter((f: string) => f.endsWith(".md"));
 
-    const SECTION_SCOPE_MAP: Record<string, RuleScope[]> = {
+    // Métadonnées front-matter parsées (priority/scope/always/condition/appliesTo).
+    // Source d'autorité ; les *_FALLBACK ci-dessous ne servent que pour les
+    // fichiers dépourvus du champ correspondant (ex: legacy sans front-matter YAML).
+    const metaById = loadPromptMeta(promptsDir);
+
+    // Scope par défaut quand le front-matter ne porte pas de `scope:` explicite.
+    // Les fichiers actuels expriment leur ciblage via `always`/`condition`/`appliesTo`,
+    // pas via `scope:` — cette table reste donc le repli de dernier recours.
+    const SECTION_SCOPE_FALLBACK: Record<string, RuleScope[]> = {
       "base":                ["full"],
       "safety":              ["global"],
       "ai-studio-directives":["full", "coding"],
@@ -323,7 +332,7 @@ export class SystemPromptBuilder {
       "security":            ["full", "coding"],
     };
 
-    const SECTION_PRIORITY_MAP: Record<string, number> = {
+    const SECTION_PRIORITY_FALLBACK: Record<string, number> = {
       "base":                 10,
       "safety":               20,
       "ai-studio-directives": 30,
@@ -336,7 +345,11 @@ export class SystemPromptBuilder {
     };
 
     for (const file of files) {
-      const id = file.replace(/\.md$/, "");
+      const fileId = file.replace(/\.md$/, "");
+      const meta   = metaById.get(fileId);
+      // L'`id:` du front-matter fait autorité (miroir du loader).
+      const id     = meta?.id ?? fileId;
+
       if (this.sectionRegistry.has(id)) continue; // déjà enregistrée
 
       try {
@@ -344,45 +357,141 @@ export class SystemPromptBuilder {
         const raw      = fs.readFileSync(filePath, "utf-8");
         const content  = this.legacyRegistry.has(id)
           ? this.legacyRegistry.render(id, { compact: true })
-          : raw;
+          // Repli : contenu déjà nettoyé du front-matter par le parser.
+          : (meta?.content ?? raw);
+
+        // ── Scope : front-matter > `always: true` (=> global) > table de repli ──
+        const scope: RuleScope[] =
+          meta?.scope && meta.scope.length > 0
+            ? meta.scope
+            : meta?.always
+              ? ["global"]
+              : SECTION_SCOPE_FALLBACK[id] ?? ["global"];
+
+        // ── Priorité : front-matter > table de repli > 100 ──
+        const priority = meta?.priority ?? SECTION_PRIORITY_FALLBACK[id] ?? 100;
 
         const section: PromptSection = {
           id,
           content,
-          scope:    SECTION_SCOPE_MAP[id] ?? ["global"],
-          priority: SECTION_PRIORITY_MAP[id] ?? 100,
-          source:   file,
+          scope,
+          priority,
+          source: file,
         };
 
-        // Conditions dynamiques pour les sections agents.
-        // La section générique (14 rôles) n'est active que si aucun sous-ensemble
-        // n'est imposé via allowedRoles ; sinon c'est agents-system-filtered qui
-        // la remplace (sans quoi le modèle lirait les deux listes).
-        if (id === "agents-system") {
-          section.when = ctx =>
-            ctx.agents.enabled && !(ctx.agents.allowedRoles && ctx.agents.allowedRoles.length > 0);
-        }
-
-        // Gating par outils : la section navigateur (~volumineuse) n'est chargée
-        // que si un outil browser_* est effectivement disponible. Prudence :
-        // quand tools.available est vide (inconnu), on garde le comportement
-        // historique (section affichée) pour éviter toute régression.
-        if (id === "browser") {
-          section.when = ctx => this.hasToolPrefix(ctx, "browser_") ?? true;
-        }
-
-        // La section audit de sécurité n'est chargée que si l'outil security_audit
-        // est disponible. Fallback : masquée quand la liste d'outils est inconnue
-        // (undefined), car c'est un bloc spécialisé qui ne doit pas peser par défaut.
-        if (id === "security") {
-          section.when = ctx => this.hasToolPrefix(ctx, "security_audit") ?? false;
-        }
+        // ── Prédicat `when` dérivé du front-matter + gating par outils ──
+        section.when = this.buildSectionPredicate(id, meta);
 
         this.sectionRegistry.set(section);
       } catch {
         // Silently skip unreadable files
       }
     }
+  }
+
+  /**
+   * Construit le prédicat d'activation d'une section à partir de son
+   * front-matter (`condition`, `appliesTo`) et des règles de gating par
+   * outils propres à certaines sections (browser, security, agents-system).
+   *
+   * Retourne `undefined` quand aucune condition ne s'applique (section
+   * activée par son seul scope).
+   */
+  private buildSectionPredicate(
+    id:   string,
+    meta: ParsedFrontMatter | undefined,
+  ): ((ctx: PromptContext) => boolean) | undefined {
+    const predicates: Array<(ctx: PromptContext) => boolean> = [];
+
+    // 1. Condition déclarative du front-matter (ex: `mode === "chat"`).
+    if (meta?.condition) {
+      const fn = this.compileConditionExpr(meta.condition);
+      if (fn) predicates.push(fn);
+    }
+
+    // 2. Ciblage par rôle d'agent (`appliesTo: [security, recon, …]`).
+    //   Quand un sous-ensemble de rôles est imposé (allowedRoles), la section
+    //   n'apparaît que si au moins un rôle ciblé est autorisé. Sans sous-ensemble
+    //   imposé, on n'exclut pas (comportement historique préservé).
+    if (meta?.appliesTo && meta.appliesTo.length > 0) {
+      const targets = new Set(meta.appliesTo);
+      predicates.push(ctx => {
+        const allowed = ctx.agents.allowedRoles;
+        if (!allowed || allowed.length === 0) return true;
+        return allowed.some(role => targets.has(role));
+      });
+    }
+
+    // 3. Gating spécifiques par section (inchangés fonctionnellement).
+    if (id === "agents-system") {
+      // La section générique n'est active que si aucun sous-ensemble n'est
+      // imposé via allowedRoles ; sinon agents-system-filtered la remplace.
+      predicates.push(ctx =>
+        ctx.agents.enabled &&
+        !(ctx.agents.allowedRoles && ctx.agents.allowedRoles.length > 0));
+    }
+
+    if (id === "browser") {
+      // Section volumineuse : chargée seulement si un outil browser_* existe.
+      // Liste d'outils inconnue (undefined) => affichée (repli historique).
+      predicates.push(ctx => this.hasToolPrefix(ctx, "browser_") ?? true);
+    }
+
+    if (id === "security") {
+      // Bloc spécialisé : chargé seulement si security_audit est disponible.
+      // Liste d'outils inconnue => masquée (ne doit pas peser par défaut).
+      predicates.push(ctx => this.hasToolPrefix(ctx, "security_audit") ?? false);
+    }
+
+    if (predicates.length === 0) return undefined;
+    return ctx => predicates.every(p => p(ctx));
+  }
+
+  /**
+   * Compile une expression de condition front-matter simple en prédicat.
+   *
+   * Formes reconnues (les seules utilisées par les fichiers de prompts) :
+   *   - `agents.enabled === true`
+   *   - `autonomy.enabled === true`
+   *   - `browser.enabled === true`
+   *   - `mode === "chat"` / `mode === "full"` / `mode === "ask"`
+   *
+   * Toute expression non reconnue retourne `undefined` (section non gatée par
+   * condition) : on préfère un repli permissif à une exclusion silencieuse.
+   */
+  private compileConditionExpr(
+    expr: string,
+  ): ((ctx: PromptContext) => boolean) | undefined {
+    const normalized = expr.trim();
+
+    // mode === "xxx"
+    const modeMatch = normalized.match(/^mode\s*===\s*["']([\w-]+)["']$/);
+    if (modeMatch) {
+      const target = modeMatch[1];
+      return ctx => ctx.mode === target;
+    }
+
+    // <flag>.enabled === true|false
+    const flagMatch = normalized.match(/^(\w+)\.enabled\s*===\s*(true|false)$/);
+    if (flagMatch) {
+      const [, flag, boolStr] = flagMatch;
+      const expected = boolStr === "true";
+      switch (flag) {
+        case "agents":
+          return ctx => ctx.agents.enabled === expected;
+        case "autonomy":
+          // L'autonomie n'a pas de champ dédié dans le contexte : elle suit
+          // le mode "full" (agent) — cohérent avec l'usage historique.
+          return ctx => (ctx.mode === "full") === expected;
+        case "browser":
+          // Reflète la disponibilité d'un outil navigateur ; repli permissif.
+          return ctx => (this.hasToolPrefix(ctx, "browser_") ?? true) === expected;
+        default:
+          return undefined;
+      }
+    }
+
+    return undefined;
   }
 
   // ─── Legacy sections (workspace + extra + footer) ─────────────────────────
