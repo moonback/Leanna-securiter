@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Shield, Plus, Trash2, Download, Upload, ToggleLeft, ToggleRight,
-  ChevronDown, ChevronRight, Tag, AlertCircle, CheckCircle2, Info,
+  ChevronDown, ChevronRight, Tag, AlertCircle,
   Package, Search, RefreshCw, Loader2
 } from 'lucide-react';
 

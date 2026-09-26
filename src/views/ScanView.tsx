@@ -313,7 +313,11 @@ export default function ScanView() {
 
       const data = await res.json();
       const totalCount = typeof data.findingsCount === 'object' ? (data.findingsCount?.total ?? data.findings?.length ?? 0) : (data.findingsCount ?? data.findings?.length ?? 0);
-      setScanLog(l => [...l, `[done] Scan terminé — ${totalCount} vulnérabilité${totalCount > 1 ? 's' : ''} détectée${totalCount > 1 ? 's' : ''}`]);
+      setScanLog(l => [
+        ...l,
+        `[done] Scan terminé — ${totalCount} vulnérabilité${totalCount > 1 ? 's' : ''} détectée${totalCount > 1 ? 's' : ''}`,
+        ...(data.scaOnlineEnrichment ? ['[cve] 🌐 Base CVE enrichie en direct (OSV.dev + EPSS FIRST.org + NVD)'] : []),
+      ]);
       setScanStatus('done');
 
       // Naviguer vers la vue des vulnérabilités
@@ -430,7 +434,7 @@ export default function ScanView() {
                   title="Analyser la copie isolée dans le sandbox pour un audit sans effet de bord"
                 >
                   <Shield size={12} className={config.target === sandboxPath ? 'text-emerald-400' : ''} />
-                  Sandbox (Recommandé)
+                  Sandbox {sandboxActive ? '(Actif)' : '(Recommandé)'}
                 </button>
                 {currentWorkspace && currentWorkspace !== sandboxPath && (
                   <button

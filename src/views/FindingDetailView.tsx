@@ -2,9 +2,8 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import {
-  ArrowLeft, AlertTriangle, AlertCircle, Info, Shield, ExternalLink,
-  CheckCircle2, Copy, ChevronRight, Tag, Clock, Fingerprint, Loader2,
-  Eye, EyeOff, BookOpen, Wrench, TrendingUp, Star, GitBranch
+  ArrowLeft, AlertTriangle, AlertCircle, Info, ExternalLink,
+  CheckCircle2, Copy, Loader2, Eye, BookOpen, Wrench, TrendingUp, GitBranch
 } from 'lucide-react';
 import type { Finding } from './FindingsView.js';
 

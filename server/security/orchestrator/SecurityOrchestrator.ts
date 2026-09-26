@@ -43,6 +43,8 @@ export interface ScanExecutionResult {
   };
   findings: Finding[];
   sbomComponents: SbomComponent[];
+  /** true si le SCA a pu interroger OSV.dev/EPSS en ligne */
+  scaOnlineEnrichment?: boolean;
 }
 
 export interface AttackSurfaceNode {
@@ -148,11 +150,18 @@ export class SecurityOrchestrator {
     const scanFindings: Finding[] = [];
 
     // 1. Scan SCA (Dépendances)
+    let scaOnlineEnrichment = false;
     if (activeScanners.sca) {
       try {
         const scaRes = await scanDependencies(targetDir);
         scanFindings.push(...scaRes.findings);
         this.sbomStore = scaRes.components;
+        scaOnlineEnrichment = scaRes.onlineEnrichment;
+        if (scaRes.onlineEnrichment) {
+          console.info(`[SecurityOrchestrator] SCA enrichi via OSV/EPSS (${scaRes.findings.length} findings)`);
+        } else {
+          console.info(`[SecurityOrchestrator] SCA fallback offline (${scaRes.findings.length} findings)`);
+        }
       } catch (err) {
         console.error("[SecurityOrchestrator] Erreur scanner SCA:", err);
       }
@@ -253,6 +262,7 @@ export class SecurityOrchestrator {
       findingsCount: counts,
       findings: uniqueFindings,
       sbomComponents: this.sbomStore,
+      scaOnlineEnrichment,
     };
 
     this.lastScanResult = result;

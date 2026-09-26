@@ -1,10 +1,10 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Shield, Search, Filter, ChevronDown, ChevronUp, ArrowRight,
-  AlertTriangle, AlertCircle, Info, CheckCircle2, Clock,
-  RefreshCw, Download, Eye, Loader2, BarChart2, Tag, X
+  Search, Filter, ChevronDown, ChevronUp, ArrowRight,
+  AlertTriangle, AlertCircle, Info, CheckCircle2,
+  RefreshCw, Download, Loader2, X
 } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -236,6 +236,11 @@ function FindingRow({ finding, onClick }: { finding: Finding; onClick: () => voi
             {finding.title}
           </span>
           <div className="flex items-center gap-2 flex-shrink-0">
+            {finding.status !== 'open' && STATUS_CONFIG[finding.status] && (
+              <span className="text-[9px] font-medium px-1.5 py-0.5 rounded border" style={{ borderColor: `${STATUS_CONFIG[finding.status].color}44`, color: STATUS_CONFIG[finding.status].color, backgroundColor: `${STATUS_CONFIG[finding.status].color}15` }}>
+                {STATUS_CONFIG[finding.status].label}
+              </span>
+            )}
             {finding.kev && (
               <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ backgroundColor: '#dc262620', color: '#dc2626', border: '1px solid #dc262640' }}>
                 KEV
@@ -263,6 +268,11 @@ function FindingRow({ finding, onClick }: { finding: Finding; onClick: () => voi
           {finding.cvss !== undefined && (
             <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
               CVSS <span style={{ color: finding.cvss >= 9 ? '#dc2626' : finding.cvss >= 7 ? '#ea580c' : '#d97706', fontWeight: 600 }}>{finding.cvss.toFixed(1)}</span>
+            </span>
+          )}
+          {finding.epss !== undefined && (
+            <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
+              EPSS <span style={{ color: finding.epss > 0.5 ? '#dc2626' : finding.epss > 0.2 ? '#ea580c' : 'var(--text-secondary)', fontWeight: 600 }}>{(finding.epss * 100).toFixed(1)}%</span>
             </span>
           )}
         </div>

@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Network, AlertTriangle, Info, ZoomIn, ZoomOut, RotateCcw, Loader2, GitBranch, Shield } from 'lucide-react';
+import { Network, AlertTriangle, ZoomIn, ZoomOut, RotateCcw, Loader2, Shield } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

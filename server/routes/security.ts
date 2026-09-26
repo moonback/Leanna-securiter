@@ -45,6 +45,7 @@ securityRouter.post("/scan", async (req, res) => {
       findingsCount: result.findingsCount,
       findings: result.findings,
       sbomCount: result.sbomComponents.length,
+      scaOnlineEnrichment: result.scaOnlineEnrichment ?? false,
     });
   } catch (error) {
     console.error("[SecurityRouter] Erreur lors du scan :", error);

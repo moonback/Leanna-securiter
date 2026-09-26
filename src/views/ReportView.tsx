@@ -1,8 +1,8 @@
 import { useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  FileText, Download, CheckCircle2, Loader2, Settings2, Shield,
-  AlertTriangle, BarChart2, FileCode, FileJson, Globe, ChevronDown, ChevronRight
+  FileText, Download, CheckCircle2, Loader2, Settings2,
+  FileCode, FileJson, Globe, ChevronDown, ChevronRight
 } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
