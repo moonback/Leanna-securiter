@@ -28,6 +28,7 @@ import {
 import type { Finding, FindingStatus } from '../findings/Finding.js';
 import type { FindingFilterOptions } from '../orchestrator/FindingManager.js';
 import { SecurityPolicyEngine, type PolicyDecision } from '../policy/SecurityPolicyEngine.js';
+import { ThreatModelEngine, type ThreatModel } from '../threat/ThreatModelEngine.js';
 
 // ---------------------------------------------------------------------------
 // Modes d'audit exposés à Leanna (section 14 du plan)
@@ -69,6 +70,11 @@ export interface SecurityCapability {
    * Ne lance PAS la DAST : renvoie uniquement la décision de gouvernance.
    */
   checkDastTarget(target: string, explicitOptIn: boolean): PolicyDecision;
+  /**
+   * Construit un modèle de menace STRIDE à partir des findings courants
+   * (ou d'un filtre optionnel) et des points d'entrée découverts.
+   */
+  generateThreatModel(filters?: FindingFilterOptions): ThreatModel;
 }
 
 // ---------------------------------------------------------------------------
@@ -89,17 +95,20 @@ export class SecurityCapabilityDeniedError extends Error {
 export class SecurityCapabilityGateway implements SecurityCapability {
   private readonly orchestrator: SecurityOrchestrator;
   private readonly policy: SecurityPolicyEngine;
+  private readonly threatEngine: ThreatModelEngine;
 
   constructor(
     private readonly workspaceRoot: string,
     orchestrator?: SecurityOrchestrator,
     policy?: SecurityPolicyEngine,
+    threatEngine?: ThreatModelEngine,
   ) {
     if (!workspaceRoot || !workspaceRoot.trim()) {
       throw new SecurityCapabilityDeniedError('aucun workspace actif.');
     }
     this.orchestrator = orchestrator ?? SecurityOrchestrator.getInstance();
     this.policy = policy ?? new SecurityPolicyEngine(workspaceRoot);
+    this.threatEngine = threatEngine ?? new ThreatModelEngine(workspaceRoot);
   }
 
   // --- Politique d'accès (déléguée au SecurityPolicyEngine) ----------------
@@ -176,6 +185,11 @@ export class SecurityCapabilityGateway implements SecurityCapability {
 
   checkDastTarget(target: string, explicitOptIn: boolean): PolicyDecision {
     return this.policy.canRunDast(target, explicitOptIn);
+  }
+
+  generateThreatModel(filters?: FindingFilterOptions): ThreatModel {
+    const findings = this.orchestrator.getAllFindings(filters ?? { status: 'open' });
+    return this.threatEngine.build(findings);
   }
 }
 
