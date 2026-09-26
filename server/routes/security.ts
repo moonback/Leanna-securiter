@@ -2,6 +2,7 @@ import express from "express";
 import path from "path";
 import { securityOrchestrator } from "../security/orchestrator/SecurityOrchestrator.js";
 import { getProjectRoot } from "../skills/codebaseHelpers.js";
+import { ruleEngine } from "../security/rules/RuleEngine.js";
 
 export const securityRouter = express.Router();
 
@@ -190,4 +191,49 @@ securityRouter.post("/report", (req, res) => {
     console.error("[SecurityRouter] Erreur génération rapport :", err);
     res.status(500).json({ error: "Échec de génération du rapport" });
   }
+});
+
+/**
+ * GET /api/security/rules
+ * Liste tous les packs de règles disponibles et leurs métadonnées.
+ */
+securityRouter.get("/rules", (req, res) => {
+  try {
+    const packs = ruleEngine.listPacks();
+    const total = ruleEngine.getAllEnabledRules().length;
+    res.json({ success: true, total, packs });
+  } catch (err) {
+    res.status(500).json({ error: "Erreur lors de la récupération des règles" });
+  }
+});
+
+/**
+ * GET /api/security/rules/:packId
+ * Retourne les règles détaillées d'un pack.
+ */
+securityRouter.get("/rules/:packId", (req, res) => {
+  const { packId } = req.params;
+  const rules = ruleEngine.getPackRules(packId);
+  if (rules.length === 0) {
+    // Vérifier si le pack existe
+    const packs = ruleEngine.listPacks();
+    const exists = packs.some((p) => p.id === packId);
+    if (!exists) return res.status(404).json({ error: "Pack introuvable" });
+  }
+  res.json({ success: true, packId, rules });
+});
+
+/**
+ * PATCH /api/security/rules/:packId/toggle
+ * Active ou désactive un pack de règles.
+ */
+securityRouter.patch("/rules/:packId/toggle", (req, res) => {
+  const { packId } = req.params;
+  const { enabled } = req.body ?? {};
+  if (typeof enabled !== "boolean") {
+    return res.status(400).json({ error: "Champ 'enabled' (boolean) requis" });
+  }
+  const ok = ruleEngine.setPackEnabled(packId, enabled);
+  if (!ok) return res.status(404).json({ error: "Pack introuvable" });
+  res.json({ success: true, packId, enabled });
 });

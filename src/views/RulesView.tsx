@@ -1,9 +1,9 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Shield, Plus, Trash2, Download, Upload, ToggleLeft, ToggleRight,
   ChevronDown, ChevronRight, Tag, AlertCircle, CheckCircle2, Info,
-  Package, Search, RefreshCw
+  Package, Search, RefreshCw, Loader2
 } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
