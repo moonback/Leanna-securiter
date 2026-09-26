@@ -115,7 +115,50 @@ Principes directeurs :
 
 ---
 
-## 9. Corrections récentes
+## 9. Recherche en lab isolé (vulnérabilités)
+
+> **Cadre non négociable.** Ce volet ne s'active **que** contre des cibles que vous possédez et contrôlez, déployées dans un **réseau de lab confiné** (air-gapped ou segment isolé sans route vers Internet ni vers un système tiers). Toute validation active est **opt-in explicite**, **journalisée**, et soumise à un **kill switch** immédiat. Hors de ce périmètre, Leanna reste lecture seule et non destructif — c'est le comportement par défaut décrit en §1.
+
+### 9.1 Cadre et garde-fous
+
+| Capacité | Statut | Détail |
+|---|---|---|
+| Manifeste de lab (`.Leanna/lab.json`) | 🔭 | Déclaration explicite du périmètre : liste blanche de cibles (CIDR/hosts que l'utilisateur possède), fenêtre horaire, propriétaire, mention d'autorisation. Aucune action active sans manifeste valide. |
+| `LabScopeGuard` — enforcement du périmètre | 🔭 | Refus fail-closed de toute cible hors liste blanche ; blocage systématique des IP publiques, des plages hors-lab et de tout host non déclaré. Analogue à `canRunDast` mais pour l'exploitation. |
+| Détecteur d'isolement réseau | 🔭 | Vérifie avant tout run actif que l'hôte de lab n'a **pas** de route sortante vers Internet (test de non-connectivité). Si une route est détectée → refus. |
+| Kill switch global + budget d'actions | 🔭 | Arrêt immédiat de toutes les tâches actives (une commande / un endpoint) ; plafond dur d'actions par run et par cible ; expiration automatique du manifeste. |
+| Journal d'audit inviolable des actions actives | 🔭 | Chaque tentative active (payload, cible, horodatage, résultat) écrite en append-only dans `.Leanna/lab-audit.log`, distincte de l'audit défensif. |
+
+### 9.2 Recherche autonome (découverte)
+
+| Capacité | Statut | Détail |
+|---|---|---|
+| Boucle de recherche autonome bornée | 🔭 | Étend `LeannaCore` (§Runtime autonome événementiel) : cycle *hypothèse → test en lab → observation → raffinement*, borné par les mêmes limites runtime (3 approches × 2 tentatives, timeout, circuit breaker, dead-letter). |
+| Générateur d'hypothèses depuis findings SAST/DAST | 🔭 | Convertit les findings `open`/`confirmed` en hypothèses testables (ex. CWE-89 → hypothèse d'injection sur tel paramètre), priorisées par le score de risque du `TriageClusterEngine`. |
+| Enrichissement exploitabilité (KEV/EPSS/PoC publics) | 🔭 | Corrèle les CVE de la SCA avec l'existence de PoC connus pour orienter la recherche, sans télécharger ni exécuter de code tiers non vérifié. |
+| Corpus de fuzzing dérivé du code | 💡 | Génère des jeux d'entrées ciblés à partir des sinks identifiés par le `TaintAnalyzer` (fuzzing guidé, pas aveugle). |
+
+### 9.3 Validation active en lab (exploitation confinée)
+
+| Capacité | Statut | Détail |
+|---|---|---|
+| `LabExploitRunner` (derrière `LabScopeGuard`) | 🔭 | Exécute des vérifications actives **uniquement en lab** : promotion d'un finding de `confirmed` à `exploited` avec preuve reproductible (requête/réponse capturée), jamais contre une cible hors périmètre. |
+| Bibliothèque de vérifs par classe (CWE) | 🔭 | Modules de validation par famille : injection SQL (extraction bornée d'une valeur témoin non sensible), traversée de chemin (lecture d'un fichier canari planté), SSRF (rappel vers un collecteur de lab interne), RCE (exécution d'une commande témoin inoffensive type `id`). |
+| Canaris & valeurs témoins | 🔭 | Le lab plante des marqueurs (fichiers/enregistrements canaris) ; une exploitation « réussie » se prouve en récupérant le canari, sans jamais exfiltrer de donnée réelle. |
+| Snapshot / rollback de la cible de lab | 💡 | Restauration automatique de la cible entre deux tests (conteneur jetable) pour garantir des runs déterministes et réversibles. |
+| Rôle agent `exploit_researcher` (lab-only) | 🔭 | Nouveau rôle dans la flotte (§4), chaîné après `poc_writer`, **inerte hors manifeste de lab** ; hérite de la doctrine « preuve ou rien ». |
+
+### 9.4 Reporting de recherche
+
+| Capacité | Statut | Détail |
+|---|---|---|
+| Chaîne de preuve d'exploitation | 🔭 | Pour chaque finding `exploited` : hypothèse → étapes → payload → preuve (canari récupéré) → remédiation, exporté dans le rapport Markdown et annoté en SARIF. |
+| Fiche de reproduction en lab | 🔭 | Instructions déterministes pour rejouer la validation dans le même lab confiné (image cible, commande, résultat attendu). |
+| Métriques de recherche | 💡 | Taux hypothèses → confirmées → exploitées, temps moyen par classe, couverture par CWE, exposées via `/api/security/*`. |
+
+---
+
+## 10. Corrections récentes
 
 - **Modélisation de menaces branchée + enrichie (STRIDE/MITRE)** — le `ThreatModelEngine` existait et était testé, mais restait inaccessible : aucune route HTTP ne l'exposait, si bien que la sortie n'était « exploitable par les analyseurs aval » qu'en théorie. De plus, la sortie n'incluait ni mapping MITRE ATT&CK ni vision de couverture. Désormais : chaque menace porte une technique MITRE (`mitreForFinding`, `null` explicite quand aucune ne s'applique — pas de remplissage arbitraire), le modèle expose une matrice de couverture STRIDE par point d'entrée, et trois endpoints REST publient le tout (`/threat-model`, `/graph`, et la fusion dans le graphe de sécurité unifié).
 - **Triage assisté par regroupement de causes racines** — les findings étaient listés à plat, sans regroupement ni priorisation par risque réel. Le nouveau `TriageClusterEngine` regroupe de façon déterministe les findings partageant une même cause (CWE + répertoire pour le SAST/IaC, paquet pour le SCA, type de secret pour les secrets) et attribue à chaque grappe un score de risque 0–100 combinant sévérité maximale, volume d'occurrences et multiplicateurs d'exploitabilité (CISA KEV, corroboration DAST, EPSS). Exposé via `/triage/clusters` ; couvert par des tests unitaires (fusion, séparation, déterminisme, élévation du risque KEV/confirmé).
@@ -128,4 +171,4 @@ Principes directeurs :
 
 ---
 
-_Dernière mise à jour : 26 septembre 2026 — Vues Console livrées pour le modèle de menace STRIDE/MITRE (`/threat-model`) et le triage par cause racine (`/triage`)._
+_Dernière mise à jour : 26 septembre 2026 — Ajout du volet « Recherche en lab isolé » (§9) : cadre confiné (manifeste de lab, `LabScopeGuard`, détecteur d'isolement réseau, kill switch), recherche autonome de vulnérabilités bornée, validation active par canaris en lab-only, et reporting avec chaîne de preuve. Volet entièrement opt-in et inerte hors périmètre de lab déclaré ; le comportement par défaut reste lecture seule et non destructif._
