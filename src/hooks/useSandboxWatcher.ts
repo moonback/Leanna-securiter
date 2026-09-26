@@ -40,6 +40,8 @@ export function useSandboxWatcher({
   const reconnectCountRef = useRef(0);
   const enabledRef = useRef(enabled);
   const lastConnectStartTs = useRef(0);
+  /** Positionné à true lors du démontage : bloque toute reconnexion ou callback post-unmount */
+  const disposedRef = useRef(false);
 
   // Toujours à jour mais NE PROVOQUENT PAS de reconnect quand ils changent
   const onFileChangedRef = useRef(onFileChanged);
@@ -64,8 +66,13 @@ export function useSandboxWatcher({
     }
     const ws = wsRef.current;
     if (ws) {
+      // Nullifier les handlers AVANT close() pour éviter tout callback
+      // post-démontage, même si le browser appelle onclose de façon asynchrone.
+      ws.onopen = null;
+      ws.onmessage = null;
+      ws.onerror = null;
+      ws.onclose = null;
       try {
-        // Évite d'appeler close() sur un socket qui n'a jamais été OPEN
         if (
           ws.readyState !== WebSocket.CLOSED &&
           ws.readyState !== WebSocket.CLOSING
@@ -78,7 +85,8 @@ export function useSandboxWatcher({
   }, []);
 
   const connect = useCallback(() => {
-    if (!enabledRef.current) return;
+    // Ne jamais (re)connecter si le composant est en cours de démontage
+    if (disposedRef.current || !enabledRef.current) return;
     const current = wsRef.current;
     if (
       current &&
@@ -113,10 +121,12 @@ export function useSandboxWatcher({
     };
 
     ws.onmessage = (event) => {
-      // Dispatch le traitement hors du handler 'message' synchron pour
+      // Dispatch le traitement hors du handler 'message' synchrone pour
       // éviter les violations "[Violation] 'message' handler took <N>ms".
       // L'ordre relatif des messages est préservé (queueMicrotask FIFO).
       queueMicrotask(() => {
+        // Guard : composant peut être démonté entre l'envoi et l'exécution du microtask
+        if (disposedRef.current) return;
         try {
           const data: SandboxFileEvent = JSON.parse(event.data);
           switch (data.type) {
@@ -144,7 +154,8 @@ export function useSandboxWatcher({
 
     ws.onclose = (evt) => {
       if (wsRef.current === ws) wsRef.current = null;
-      if (!enabledRef.current) return;
+      // Ne jamais reconnecter si le composant est démonté ou désactivé
+      if (disposedRef.current || !enabledRef.current) return;
       if (evt.wasClean && evt.code === 1000) return;
 
       // Auto-reconnect avec backoff exponential + jitter
@@ -167,11 +178,20 @@ export function useSandboxWatcher({
 
   // Connecter/déconnecter en fonction de `enabled` (seulement)
   useEffect(() => {
+    // Réactiver le flag au montage (cas StrictMode : démonte puis remonte)
+    disposedRef.current = false;
+
     if (enabled) {
       connect();
     } else {
       cleanupConnection(1000, 'disabled');
     }
-    return cleanupConnection;
+
+    return () => {
+      // Marquer comme démonté AVANT cleanup pour que les handlers async
+      // (queueMicrotask, setTimeout reconnect) ignorent leurs callbacks.
+      disposedRef.current = true;
+      cleanupConnection(1000, 'unmount');
+    };
   }, [enabled, connect, cleanupConnection]);
 }

@@ -75,9 +75,11 @@ export function useFocusTrap<T extends HTMLElement = HTMLDivElement>(
     if (enabled) return;
     const target = returnFocusTo ?? previousFocusRef.current;
     if (target && typeof target.focus === 'function') {
-      // Délai minimal pour laisser les animations de fermeture démarrer
-      const id = setTimeout(() => target.focus(), 10);
-      return () => clearTimeout(id);
+      // requestAnimationFrame au lieu de setTimeout(fn, 10) :
+      // reste dans le cycle de peinture du navigateur sans forcer
+      // un layout supplémentaire synchrone.
+      const id = requestAnimationFrame(() => target.focus());
+      return () => cancelAnimationFrame(id);
     }
   }, [enabled, returnFocusTo]);
 
@@ -85,14 +87,43 @@ export function useFocusTrap<T extends HTMLElement = HTMLDivElement>(
   useEffect(() => {
     if (!enabled) return;
 
+    /**
+     * Cache des éléments focusables : invalider via MutationObserver
+     * évite de recalculer la liste (+ offsetParent layout query) à chaque
+     * frappe de Tab — principale source de forced-reflow dans ce hook.
+     */
+    let cachedFocusable: HTMLElement[] | null = null;
+
+    const invalidateCache = () => { cachedFocusable = null; };
+
+    const observer = new MutationObserver(invalidateCache);
+    const container = containerRef.current;
+    if (container) {
+      observer.observe(container, {
+        subtree: true,
+        childList: true,
+        attributes: true,
+        attributeFilter: ['disabled', 'tabindex', 'hidden'],
+      });
+    }
+
+    const getFocusable = (): HTMLElement[] => {
+      if (cachedFocusable !== null) return cachedFocusable;
+      const c = containerRef.current;
+      if (!c) return [];
+      // Toutes les lectures DOM sont groupées ici (batch read) —
+      // aucune écriture ne les précède dans ce chemin.
+      cachedFocusable = Array.from(
+        c.querySelectorAll<HTMLElement>(FOCUSABLE),
+      ).filter(el => !el.closest('[hidden]') && el.offsetParent !== null);
+      return cachedFocusable;
+    };
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'Tab') return;
-      const container = containerRef.current;
-      if (!container) return;
 
-      const focusable = Array.from(
-        container.querySelectorAll<HTMLElement>(FOCUSABLE),
-      ).filter(el => !el.closest('[hidden]') && el.offsetParent !== null);
+      // Lecture groupée : pas d'élément DOM écrit avant cette ligne
+      const focusable = getFocusable();
 
       if (focusable.length === 0) {
         e.preventDefault();
@@ -103,22 +134,24 @@ export function useFocusTrap<T extends HTMLElement = HTMLDivElement>(
       const last = focusable[focusable.length - 1];
 
       if (e.shiftKey) {
-        // Shift+Tab : si on est sur le premier, aller au dernier
         if (document.activeElement === first) {
           e.preventDefault();
-          last.focus();
+          last.focus();   // écriture DOM après toutes les lectures
         }
       } else {
-        // Tab : si on est sur le dernier, revenir au premier
         if (document.activeElement === last) {
           e.preventDefault();
-          first.focus();
+          first.focus();  // écriture DOM après toutes les lectures
         }
       }
     };
 
     document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      observer.disconnect();
+      cachedFocusable = null;
+    };
   }, [enabled]);
 
   return { containerRef };
