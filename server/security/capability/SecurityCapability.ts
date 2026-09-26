@@ -32,6 +32,7 @@ import { SecurityPolicyEngine, type PolicyDecision } from '../policy/SecurityPol
 import { ThreatModelEngine, type ThreatModel } from '../threat/ThreatModelEngine.js';
 import { SecurityGraph } from '../graph/SecurityGraph.js';
 import { SecurityPostureTracker, type PostureSnapshot, type PostureTrendReport } from '../posture/SecurityPostureTracker.js';
+import { TriageClusterEngine, type TriageClusterReport } from '../triage/TriageClusterEngine.js';
 
 // ---------------------------------------------------------------------------
 // Modes d'audit exposés à Leanna (section 14 du plan)
@@ -89,6 +90,11 @@ export interface SecurityCapability {
    * sécurité unifié et interrogeable (section 17 du plan).
    */
   generateSecurityGraph(filters?: FindingFilterOptions): SecurityGraph;
+  /**
+   * Regroupe les findings par cause racine et priorise les grappes par risque
+   * réel (triage assisté). Par défaut, opère sur les findings ouverts + confirmés.
+   */
+  clusterFindings(filters?: FindingFilterOptions): TriageClusterReport;
   /** Historique des instantanés de posture enregistrés après chaque audit. */
   getPostureHistory(): PostureSnapshot[];
   /** Tendance de posture (improving/stable/regressing) entre les deux derniers audits. */
@@ -115,6 +121,7 @@ export class SecurityCapabilityGateway implements SecurityCapability {
   private readonly policy: SecurityPolicyEngine;
   private readonly threatEngine: ThreatModelEngine;
   private readonly posture: SecurityPostureTracker;
+  private readonly triageEngine: TriageClusterEngine;
 
   constructor(
     private readonly workspaceRoot: string,
@@ -122,6 +129,7 @@ export class SecurityCapabilityGateway implements SecurityCapability {
     policy?: SecurityPolicyEngine,
     threatEngine?: ThreatModelEngine,
     posture?: SecurityPostureTracker,
+    triageEngine?: TriageClusterEngine,
   ) {
     if (!workspaceRoot || !workspaceRoot.trim()) {
       throw new SecurityCapabilityDeniedError('aucun workspace actif.');
@@ -130,6 +138,7 @@ export class SecurityCapabilityGateway implements SecurityCapability {
     this.policy = policy ?? new SecurityPolicyEngine(workspaceRoot);
     this.threatEngine = threatEngine ?? new ThreatModelEngine(workspaceRoot);
     this.posture = posture ?? new SecurityPostureTracker();
+    this.triageEngine = triageEngine ?? new TriageClusterEngine();
   }
 
   // --- Politique d'accès (déléguée au SecurityPolicyEngine) ----------------
@@ -238,6 +247,17 @@ export class SecurityCapabilityGateway implements SecurityCapability {
     const attackSurface = this.orchestrator.getAttackSurface();
     const threatModel = this.threatEngine.build(findings);
     return SecurityGraph.build({ findings, attackSurface, threatModel });
+  }
+
+  clusterFindings(filters?: FindingFilterOptions): TriageClusterReport {
+    // Par défaut : findings actionnables (ouverts + confirmés). Un filtre 'all'
+    // explicite permet d'inclure aussi les états triés.
+    const findings = filters
+      ? this.orchestrator.getAllFindings(filters)
+      : this.orchestrator
+          .getAllFindings({})
+          .filter((f) => f.status === 'open' || f.status === 'confirmed');
+    return this.triageEngine.cluster(findings);
   }
 
   getPostureHistory(): PostureSnapshot[] {

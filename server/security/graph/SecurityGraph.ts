@@ -166,7 +166,12 @@ export class SecurityGraph {
         type: 'threat',
         label: t.title,
         riskScore: SEV_RISK[t.severity] ?? 5,
-        attributes: { stride: t.stride, severity: t.severity },
+        attributes: {
+          stride: t.stride,
+          severity: t.severity,
+          mitre: t.mitre?.id ?? null,
+          mitreTactic: t.mitre?.tactic ?? null,
+        },
       });
       for (const fid of t.evidenceFindingIds) {
         g.addEdge('evidencedBy', t.id, `finding:${fid}`);

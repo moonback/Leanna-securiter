@@ -21,6 +21,9 @@
  *  GET    /rules                        → list rule packs
  *  GET    /rules/:packId                → rules in a pack
  *  PATCH  /rules/:packId/toggle         → enable/disable a pack
+ *  GET    /threat-model                 → STRIDE threat model + MITRE ATT&CK mapping
+ *  GET    /graph                        → unified security graph (findings+surface+threats)
+ *  GET    /triage/clusters              → root-cause clusters + real-risk prioritization
  */
 
 import express from "express";
@@ -28,6 +31,8 @@ import path from "path";
 import { securityOrchestrator } from "../security/orchestrator/SecurityOrchestrator.js";
 import { getProjectRoot } from "../skills/codebaseHelpers.js";
 import { ruleEngine } from "../security/rules/RuleEngine.js";
+import { createSecurityCapability } from "../security/capability/SecurityCapability.js";
+import type { FindingFilterOptions } from "../security/orchestrator/FindingManager.js";
 
 export const securityRouter = express.Router();
 
@@ -446,4 +451,67 @@ securityRouter.patch("/rules/:packId/toggle", (req, res) => {
   const ok = ruleEngine.setPackEnabled(packId, enabled);
   if (!ok) { res.status(404).json({ error: "Pack introuvable" }); return; }
   res.json({ success: true, packId, enabled });
+});
+
+// ─── Threat model / graph / triage clustering ─────────────────────────────────
+//
+//  GET  /threat-model      → modèle de menace STRIDE + mapping MITRE ATT&CK
+//  GET  /graph             → graphe de sécurité unifié (findings + surface + menaces)
+//  GET  /triage/clusters   → regroupement des findings par cause racine + risque
+
+/**
+ * Construit une passerelle de capacité liée au workspace actif, ou renvoie null.
+ * La résolution du workspace est identique au reste du routeur (sandbox exclue :
+ * le modèle de menace raisonne sur le code réel du projet).
+ */
+function resolveCapability() {
+  const root = getProjectRoot() || process.cwd();
+  return createSecurityCapability(root);
+}
+
+/** Parse les filtres de findings communs depuis la query string. */
+function parseFindingFilters(query: Record<string, unknown>): FindingFilterOptions | undefined {
+  const filters: FindingFilterOptions = {};
+  if (typeof query.status === "string") filters.status = query.status as FindingFilterOptions["status"];
+  if (typeof query.severity === "string") filters.severity = query.severity as FindingFilterOptions["severity"];
+  if (typeof query.scanner === "string") filters.scanner = query.scanner as FindingFilterOptions["scanner"];
+  if (typeof query.cwe === "string") filters.cwe = query.cwe;
+  if (query.cisaKevOnly === "true") filters.cisaKevOnly = true;
+  return Object.keys(filters).length > 0 ? filters : undefined;
+}
+
+securityRouter.get("/threat-model", (req, res) => {
+  try {
+    const cap = resolveCapability();
+    if (!cap) { res.status(409).json({ error: "Aucun workspace actif" }); return; }
+    const model = cap.generateThreatModel(parseFindingFilters(req.query as Record<string, unknown>));
+    res.json({ success: true, threatModel: model });
+  } catch (err) {
+    console.error("[SecurityRouter] threat-model error:", err);
+    res.status(500).json({ error: "Échec de génération du modèle de menace" });
+  }
+});
+
+securityRouter.get("/graph", (req, res) => {
+  try {
+    const cap = resolveCapability();
+    if (!cap) { res.status(409).json({ error: "Aucun workspace actif" }); return; }
+    const graph = cap.generateSecurityGraph(parseFindingFilters(req.query as Record<string, unknown>));
+    res.json({ success: true, graph: graph.toJSON() });
+  } catch (err) {
+    console.error("[SecurityRouter] graph error:", err);
+    res.status(500).json({ error: "Échec de génération du graphe de sécurité" });
+  }
+});
+
+securityRouter.get("/triage/clusters", (req, res) => {
+  try {
+    const cap = resolveCapability();
+    if (!cap) { res.status(409).json({ error: "Aucun workspace actif" }); return; }
+    const report = cap.clusterFindings(parseFindingFilters(req.query as Record<string, unknown>));
+    res.json({ success: true, ...report });
+  } catch (err) {
+    console.error("[SecurityRouter] triage clusters error:", err);
+    res.status(500).json({ error: "Échec du regroupement de triage" });
+  }
 });

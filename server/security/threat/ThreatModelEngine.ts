@@ -71,6 +71,16 @@ export type StrideCategory =
   | 'denial_of_service'
   | 'elevation_of_privilege';
 
+/** Technique MITRE ATT&CK rattachée à une menace (ex: T1190). */
+export interface MitreTechnique {
+  /** Identifiant ATT&CK (ex: "T1190"). */
+  id: string;
+  /** Nom lisible de la technique. */
+  name: string;
+  /** Tactique parente (ex: "Initial Access"). */
+  tactic: string;
+}
+
 export interface Threat {
   id: string;
   stride: StrideCategory;
@@ -81,6 +91,23 @@ export interface Threat {
   affects: string[];
   /** Findings sources ayant motivé la menace. */
   evidenceFindingIds: string[];
+  /** Technique MITRE ATT&CK correspondante, ou null si aucune ne s'applique. */
+  mitre: MitreTechnique | null;
+}
+
+/**
+ * Couverture STRIDE par point d'entrée : indique, pour chaque catégorie, si au
+ * moins une menace concrète la couvre. Consommable tel quel par les analyseurs
+ * aval (sast_analyzer, auth_auditor) pour cibler les zones non couvertes.
+ */
+export interface StrideCoverageRow {
+  entryPointId: string;
+  route: string;
+  verb: HttpVerb;
+  /** true pour chaque catégorie STRIDE ayant au moins une menace rattachée. */
+  covered: Record<StrideCategory, boolean>;
+  /** Nombre de menaces rattachées à ce point d'entrée. */
+  threatCount: number;
 }
 
 export interface ThreatModel {
@@ -91,10 +118,14 @@ export interface ThreatModel {
   trustBoundaries: TrustBoundary[];
   dataFlows: DataFlow[];
   threats: Threat[];
+  /** Matrice de couverture STRIDE par point d'entrée. */
+  strideCoverage: StrideCoverageRow[];
   summary: {
     entryPointCount: number;
     threatCount: number;
     criticalThreats: number;
+    /** Nombre de techniques MITRE ATT&CK distinctes mappées. */
+    mitreTechniqueCount: number;
   };
 }
 
@@ -190,6 +221,60 @@ export function strideForFinding(f: Finding): StrideCategory {
   return 'tampering';
 }
 
+/**
+ * Mappe un finding vers une technique MITRE ATT&CK à partir de son CWE / scanner /
+ * ruleId. Retourne `null` lorsqu'aucune technique ne correspond franchement —
+ * conformément à la doctrine du rôle threat_modeler : ne jamais inventer une
+ * technique pour « remplir une case ».
+ */
+export function mitreForFinding(f: Finding): MitreTechnique | null {
+  const cwes = (f.cwe ?? []).join(',').toUpperCase();
+  const rule = f.ruleId.toUpperCase();
+  const test = (re: RegExp) => re.test(cwes) || re.test(rule);
+
+  // Injection (SQL / commande / NoSQL) → Exploit Public-Facing Application.
+  if (test(/CWE-89|CWE-78|CWE-943|CWE-90|SQL|INJECT|COMMAND/)) {
+    return { id: 'T1190', name: 'Exploit Public-Facing Application', tactic: 'Initial Access' };
+  }
+  // Désérialisation / RCE via composant → Exploitation for Client Execution.
+  if (test(/CWE-502|CWE-94|DESERIAL|RCE/)) {
+    return { id: 'T1203', name: 'Exploitation for Client Execution', tactic: 'Execution' };
+  }
+  // XSS → Drive-by Compromise (exécution côté client via contenu web).
+  if (test(/CWE-79|XSS/)) {
+    return { id: 'T1189', name: 'Drive-by Compromise', tactic: 'Initial Access' };
+  }
+  // Secrets / credentials en clair → Unsecured Credentials.
+  if (f.scanner === 'secrets' || test(/CWE-798|CWE-321|SECRET|CREDENTIAL|API_KEY/)) {
+    return { id: 'T1552', name: 'Unsecured Credentials', tactic: 'Credential Access' };
+  }
+  // Auth cassée / absence de contrôle → Valid Accounts.
+  if (test(/CWE-287|CWE-306|CWE-862|CWE-347|AUTH|JWT/)) {
+    return { id: 'T1078', name: 'Valid Accounts', tactic: 'Defense Evasion' };
+  }
+  // Élévation de privilège / conteneur privilégié → Exploitation for Priv Esc.
+  if (test(/CWE-269|CWE-250|PRIV|ROOT/)) {
+    return { id: 'T1068', name: 'Exploitation for Privilege Escalation', tactic: 'Privilege Escalation' };
+  }
+  // SSRF → contournement du proxy / accès interne (Proxy).
+  if (test(/CWE-918|SSRF/)) {
+    return { id: 'T1090', name: 'Proxy', tactic: 'Command and Control' };
+  }
+  // Path traversal / divulgation → Data from Local System.
+  if (test(/CWE-22|CWE-200|PATH|TRAVERSAL|DISCLOSURE/)) {
+    return { id: 'T1005', name: 'Data from Local System', tactic: 'Collection' };
+  }
+  // Dépendance vulnérable (SCA) → Exploit Public-Facing Application (générique).
+  if (f.scanner === 'sca') {
+    return { id: 'T1190', name: 'Exploit Public-Facing Application', tactic: 'Initial Access' };
+  }
+  // DoS / épuisement de ressources → Endpoint Denial of Service.
+  if (test(/CWE-400|DOS|REDOS|RESOURCE/)) {
+    return { id: 'T1499', name: 'Endpoint Denial of Service', tactic: 'Impact' };
+  }
+  return null;
+}
+
 const STRIDE_LABEL: Record<StrideCategory, string> = {
   spoofing: 'Usurpation (Spoofing)',
   tampering: 'Altération (Tampering)',
@@ -249,7 +334,7 @@ export class ThreatModelEngine {
       { id: 'df-ext', from: 'asset-runtime', to: 'actor-external', description: 'Appels LLM / enrichissement CVE', crossesBoundary: true },
     ];
 
-    // Menaces : une par finding, catégorisée STRIDE et rattachée à un actif/EP.
+    // Menaces : une par finding, catégorisée STRIDE, mappée MITRE et rattachée à un actif/EP.
     const threats: Threat[] = findings.map((f, i) => {
       const stride = strideForFinding(f);
       const affects = this.assetsForFinding(f, entryPoints);
@@ -261,8 +346,15 @@ export class ThreatModelEngine {
         severity: f.severity,
         affects,
         evidenceFindingIds: [f.id],
+        mitre: mitreForFinding(f),
       };
     });
+
+    const strideCoverage = this.buildStrideCoverage(entryPoints, threats);
+
+    const mitreTechniqueCount = new Set(
+      threats.map((t) => t.mitre?.id).filter((id): id is string => Boolean(id)),
+    ).size;
 
     return {
       generatedAt: new Date().toISOString(),
@@ -272,12 +364,44 @@ export class ThreatModelEngine {
       trustBoundaries,
       dataFlows,
       threats,
+      strideCoverage,
       summary: {
         entryPointCount: entryPoints.length,
         threatCount: threats.length,
         criticalThreats: threats.filter((t) => t.severity === 'critical').length,
+        mitreTechniqueCount,
       },
     };
+  }
+
+  /**
+   * Construit la matrice de couverture STRIDE par point d'entrée. Une menace est
+   * rattachée à un point d'entrée lorsqu'elle le cite dans `affects`.
+   */
+  private buildStrideCoverage(entryPoints: EntryPoint[], threats: Threat[]): StrideCoverageRow[] {
+    const categories: StrideCategory[] = [
+      'spoofing',
+      'tampering',
+      'repudiation',
+      'information_disclosure',
+      'denial_of_service',
+      'elevation_of_privilege',
+    ];
+    const emptyCoverage = (): Record<StrideCategory, boolean> =>
+      categories.reduce((acc, c) => { acc[c] = false; return acc; }, {} as Record<StrideCategory, boolean>);
+
+    return entryPoints.map((ep) => {
+      const related = threats.filter((t) => t.affects.includes(ep.id));
+      const covered = emptyCoverage();
+      for (const t of related) covered[t.stride] = true;
+      return {
+        entryPointId: ep.id,
+        route: ep.route,
+        verb: ep.verb,
+        covered,
+        threatCount: related.length,
+      };
+    });
   }
 
   /** Rattache un finding aux actifs/points d'entrée qu'il menace. */

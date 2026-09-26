@@ -6,6 +6,7 @@ import path from 'node:path';
 import {
   discoverHttpEntryPoints,
   strideForFinding,
+  mitreForFinding,
   ThreatModelEngine,
 } from './ThreatModelEngine.js';
 import type { Finding } from '../findings/Finding.js';
@@ -83,4 +84,19 @@ test('ThreatModelEngine.build synthesizes a model with threats per finding', () 
   assert.ok(sqlThreat?.affects.includes('asset-db'));
   assert.ok(model.actors.length >= 3);
   assert.ok(model.trustBoundaries.length >= 1);
+
+  // MITRE mapping: SQL injection → T1190, secret → T1552.
+  assert.equal(sqlThreat?.mitre?.id, 'T1190');
+  const secretThreat = model.threats.find((t) => t.evidenceFindingIds.includes('a'));
+  assert.equal(secretThreat?.mitre?.id, 'T1552');
+  assert.equal(model.summary.mitreTechniqueCount >= 2, true);
+
+  // STRIDE coverage matrix is present and has one row per entry point.
+  assert.equal(Array.isArray(model.strideCoverage), true);
+  assert.equal(model.strideCoverage.length, model.entryPoints.length);
+});
+
+test('mitreForFinding returns null when no technique clearly applies', () => {
+  const f = makeFinding({ scanner: 'sast', cwe: ['CWE-1004'], ruleId: 'MISC' });
+  assert.equal(mitreForFinding(f), null);
 });

@@ -56,8 +56,8 @@ Principes directeurs :
 | **Prompts système par rôle** | ✅ | `buildSecurityAgentPrompt` : doctrine partagée + contrat de finding JSON strict + format de sortie normalisé, un prompt distinct par rôle. |
 | **Matrice de délégation chaînée** | ✅ | `DELEGATION_MATRIX` : recon → threat_modeler → analyseurs → triage → poc_writer → report_writer. |
 | Lecture seule stricte + 2 exceptions encadrées | ✅ | `report_writer` (rapports) et `poc_writer` (PoC) écrivent uniquement des artefacts, confinés à la sandbox. |
-| Modélisation de menaces STRIDE / MITRE | 🚧 | `threat_modeler` : sortie structurée exploitable par les analyseurs aval. |
-| Triage assisté par IA (clustering de causes) | 🔭 | Regroupement par cause racine, priorisation par risque réel. |
+| **Modélisation de menaces STRIDE / MITRE** | ✅ | `ThreatModelEngine` : points d'entrée découverts statiquement, menaces STRIDE dérivées des findings, **mapping MITRE ATT&CK** par menace et **matrice de couverture STRIDE par point d'entrée**. Exposé via `GET /api/security/threat-model` et fusionné dans `GET /api/security/graph`. |
+| **Triage assisté (clustering de causes)** | ✅ | `TriageClusterEngine` : regroupement déterministe par cause racine (CWE + localité / paquet / type de secret) et priorisation par **risque réel** (sévérité × volume × exploitabilité KEV/DAST/EPSS). Exposé via `GET /api/security/triage/clusters`. |
 
 ---
 
@@ -115,6 +115,8 @@ Principes directeurs :
 
 ## 9. Corrections récentes
 
+- **Modélisation de menaces branchée + enrichie (STRIDE/MITRE)** — le `ThreatModelEngine` existait et était testé, mais restait inaccessible : aucune route HTTP ne l'exposait, si bien que la sortie n'était « exploitable par les analyseurs aval » qu'en théorie. De plus, la sortie n'incluait ni mapping MITRE ATT&CK ni vision de couverture. Désormais : chaque menace porte une technique MITRE (`mitreForFinding`, `null` explicite quand aucune ne s'applique — pas de remplissage arbitraire), le modèle expose une matrice de couverture STRIDE par point d'entrée, et trois endpoints REST publient le tout (`/threat-model`, `/graph`, et la fusion dans le graphe de sécurité unifié).
+- **Triage assisté par regroupement de causes racines** — les findings étaient listés à plat, sans regroupement ni priorisation par risque réel. Le nouveau `TriageClusterEngine` regroupe de façon déterministe les findings partageant une même cause (CWE + répertoire pour le SAST/IaC, paquet pour le SCA, type de secret pour les secrets) et attribue à chaque grappe un score de risque 0–100 combinant sévérité maximale, volume d'occurrences et multiplicateurs d'exploitabilité (CISA KEV, corroboration DAST, EPSS). Exposé via `/triage/clusters` ; couvert par des tests unitaires (fusion, séparation, déterminisme, élévation du risque KEV/confirmé).
 - **Packs de règles rendus effectifs (OWASP/CWE/KEV/IaC)** — la capacité était une coquille d'UI : `RulesView` affichait des toggles et le `RuleEngine` gérait bien `setPackEnabled`, mais (1) l'état n'était pas persisté et repartait à zéro au redémarrage, (2) aucun scanner ne consultait l'état des packs — désactiver OWASP ne changeait rien aux findings, et (3) le pack IaC annoncé dans le titre n'existait pas. Désormais : l'état activé/désactivé est persisté dans `.Leanna/rule-packs.json` (rechargé au démarrage) ; l'orchestrateur filtre les `rawFindings` avant ingestion via `ruleEngine.filterFindings`, en rattachant chaque finding à ses packs par `ruleId`/CWE/OWASP (un finding est écarté seulement si tous les packs qui le revendiquent sont désactivés, fail-open sinon) ; et un pack `iac-baseline` réel (Docker root, tag latest, pod privilégié, ingress ouvert) est enregistré et mappé sur les `ruleId` émis par `IacScanner`.
 - **DAST livrée (opt-in, non destructive)** — la capacité restait une coquille : la politique (`canRunDast`, classification de cible) et le rôle `dast_runner` existaient, mais aucun scanner ne tournait et le flag `dast: true` du profil `full` était inerte. Le `DastScanner` réel est désormais branché dans l'orchestrateur (étape 4bis), derrière une triple porte (scanner actif + opt-in explicite + `canRunDast === allow`). Il n'émet que des requêtes d'observation inoffensives (GET/HEAD/OPTIONS, redirections manuelles, timeouts et plafond de requêtes) et corrobore dynamiquement les findings SAST exposés en HTTP, les promouvant de `open` à `confirmed` sans jamais les exploiter. Cible acceptée en automatique : localhost ; staging/inconnu → approbation ; production → refus.
 - **Gate bloquant abusif** — un scan `full` à la demande bloquait dès qu'une CVE `medium` existait dans les dépendances transitives (`BLOCKED | 24 findings (0C 0H)`). Le gate est désormais réservé aux déclencheurs CI/CD (`git_commit` / `pre_push`) ; les scans manuels restent `completed` et informatifs.
@@ -124,4 +126,4 @@ Principes directeurs :
 
 ---
 
-_Dernière mise à jour : 26 septembre 2026 — Packs de règles configurables rendus effectifs (OWASP/CWE/KEV/IaC)._
+_Dernière mise à jour : 26 septembre 2026 — Modélisation de menaces STRIDE/MITRE et triage assisté par clustering de causes livrés._
